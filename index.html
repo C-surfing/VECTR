@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VECTR | Digital Archive</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&family=Noto+Sans+SC:wght@300;400;700&display=swap" rel="stylesheet">
+    <!-- KaTeX for math support -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto+Sans+SC', sans-serif;
+            background: #020208;
+            color: #e0e0ff;
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+        .font-orbitron { font-family: 'Orbitron', sans-serif; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); }
+        ::-webkit-scrollbar-thumb { background: rgba(6, 182, 212, 0.2); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(6, 182, 212, 0.4); }
+        
+        /* Glassmorphism Classes */
+        .glass {
+            background: rgba(10, 10, 30, 0.35);
+            backdrop-filter: blur(30px) saturate(160%);
+            -webkit-backdrop-filter: blur(30px) saturate(160%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+        }
+        .text-glow { text-shadow: 0 0 15px rgba(34, 211, 238, 0.6), 0 0 30px rgba(139, 92, 246, 0.2); }
+        
+        /* Double Shadow Mirage Animations */
+        @keyframes drift {
+            0% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(20px, -30px) scale(1.1); }
+            66% { transform: translate(-10px, 20px) scale(0.9); }
+            100% { transform: translate(0, 0) scale(1); }
+        }
+        
+        .mirage-container {
+            position: fixed;
+            inset: 0;
+            z-index: -10;
+            overflow: hidden;
+            pointer-events: none;
+        }
+        
+        .mirage-blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(140px);
+            mix-blend-mode: screen;
+            opacity: 0.18;
+            animation: drift 25s infinite ease-in-out;
+        }
+        
+        /* Glassy scanline effect */
+        .scanlines {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%,
+                rgba(0, 0, 0, 0.05) 50%
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0.15;
+        }
+
+        /* Noise texture overlay */
+        .grain {
+            position: fixed;
+            inset: 0;
+            background-image: url("https://grainy-gradients.vercel.app/noise.svg");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 99;
+        }
+        
+        .bg-mesh {
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(circle at 2px 2px, rgba(255,255,255,0.03) 1px, transparent 0);
+            background-size: 32px 32px;
+            z-index: -5;
+        }
+    </style>
+    <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@19.2.4",
+    "react-dom": "https://esm.sh/react-dom@19.2.4",
+    "react-dom/client": "https://esm.sh/react-dom@19.2.4/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.463.0",
+    "@google/genai": "https://esm.sh/@google/genai@1.41.0",
+    "katex": "https://esm.sh/katex@0.16.8",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/"
+  }
+}
+</script>
+</head>
+<body>
+    <div class="mirage-container">
+        <!-- Double Shadow Mirage Background -->
+        <div class="mirage-blob w-[900px] h-[900px] bg-cyan-600 top-[-20%] left-[-15%]" style="animation-delay: 0s;"></div>
+        <div class="mirage-blob w-[800px] h-[800px] bg-purple-700 bottom-[-15%] right-[-10%]" style="animation-delay: -5s; animation-direction: reverse;"></div>
+        <div class="mirage-blob w-[500px] h-[500px] bg-indigo-500 top-[20%] right-[10%]" style="animation-delay: -10s; animation-duration: 20s;"></div>
+        <div class="mirage-blob w-[600px] h-[600px] bg-blue-800 bottom-[10%] left-[20%]" style="animation-delay: -15s; animation-duration: 30s;"></div>
+    </div>
+    <div class="bg-mesh"></div>
+    <div class="scanlines"></div>
+    <div class="grain"></div>
+    <div id="root"></div>
+</body>
+</html>

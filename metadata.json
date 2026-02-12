@@ -1,0 +1,8 @@
+{
+  "name": "Mirage Haven - Tech Blog",
+  "description": "A futuristic personal blog with glassmorphism design, particle effects, and support for math, video, and AI-powered writing assistants.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
