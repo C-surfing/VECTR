@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Post, Category } from './types';
 import { DB } from './services/db';
 import ParticleBackground from './components/ParticleBackground';
-import { Home, Layout, BookOpen, User as UserIcon, LogOut, PlusSquare, Link2, ChevronRight, Ghost } from 'lucide-react';
+import { Home, Layout, BookOpen, User as UserIcon, LogOut, PlusSquare, Link2, ChevronRight, Ghost, Info } from 'lucide-react';
 
 // Views
 import HomeView from './views/Home';
@@ -10,8 +10,9 @@ import BlogListView from './views/BlogList';
 import PostDetailView from './views/PostDetail';
 import FriendsView from './views/Friends';
 import AdminEditorView from './views/AdminEditor';
+import AboutView from './views/About';
 
-type View = 'home' | 'blog' | 'post' | 'friends' | 'editor';
+type View = 'home' | 'blog' | 'post' | 'friends' | 'editor' | 'about';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('home');
@@ -72,6 +73,7 @@ const App: React.FC = () => {
           <div className="hidden md:flex items-center space-x-10 font-medium">
             <button onClick={() => navigate('home')} className="hover:text-cyan-400 transition-colors uppercase tracking-[0.2em] text-sm font-bold">首页</button>
             <button onClick={() => navigate('blog')} className="hover:text-cyan-400 transition-colors uppercase tracking-[0.2em] text-sm font-bold">归档</button>
+            <button onClick={() => navigate('about')} className="hover:text-cyan-400 transition-colors uppercase tracking-[0.2em] text-sm font-bold">关于</button>
             <button onClick={() => navigate('friends')} className="hover:text-cyan-400 transition-colors uppercase tracking-[0.2em] text-sm font-bold">友链</button>
             {user?.role === 'admin' && (
               <button onClick={() => navigate('editor')} className="flex items-center text-cyan-400 hover:text-cyan-300 uppercase tracking-[0.2em] text-sm font-bold">
@@ -108,6 +110,7 @@ const App: React.FC = () => {
           <div className="md:hidden glass absolute top-full left-0 right-0 p-8 flex flex-col space-y-6 animate-fade-in border-t border-white/10">
              <button onClick={() => navigate('home')} className="text-lg font-bold uppercase tracking-widest">首页</button>
              <button onClick={() => navigate('blog')} className="text-lg font-bold uppercase tracking-widest">归档</button>
+             <button onClick={() => navigate('about')} className="text-lg font-bold uppercase tracking-widest">关于</button>
              <button onClick={() => navigate('friends')} className="text-lg font-bold uppercase tracking-widest">友链</button>
              {user?.role === 'admin' && <button onClick={() => navigate('editor')} className="text-lg font-bold uppercase tracking-widest text-cyan-400">发布文章</button>}
              {!user && <button onClick={() => handleLogin('Admin')} className="text-lg font-bold uppercase tracking-widest">登入</button>}
@@ -124,6 +127,7 @@ const App: React.FC = () => {
           {currentView === 'post' && selectedPostId && <PostDetailView postId={selectedPostId} user={user} onNavigate={navigate} />}
           {currentView === 'friends' && <FriendsView />}
           {currentView === 'editor' && user?.role === 'admin' && <AdminEditorView onNavigate={navigate} />}
+          {currentView === 'about' && <AboutView />}
         </div>
       </main>
 

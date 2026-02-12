@@ -1,8 +1,7 @@
-
 import React from 'react';
 import { DB } from '../services/db';
 import { Category } from '../types';
-import { Sparkles, ArrowRight, Brain, Code, Palette, Landmark, Terminal, Cpu } from 'lucide-react';
+import { Sparkles, ArrowRight, Brain, Code, Palette, Landmark, Terminal, Cpu, UserCircle } from 'lucide-react';
 
 const Home: React.FC<{ onNavigate: (view: any, id?: string, cat?: Category | 'All') => void }> = ({ onNavigate }) => {
   const recentPosts = DB.getPosts().slice(0, 3);
@@ -55,6 +54,12 @@ const Home: React.FC<{ onNavigate: (view: any, id?: string, cat?: Category | 'Al
             className="px-10 py-4 glass hover:bg-white/10 rounded-2xl font-bold transition-all duration-300 uppercase tracking-widest text-sm border border-white/10"
           >
             时空友链
+          </button>
+          <button 
+            onClick={() => onNavigate('about')}
+            className="px-10 py-4 glass hover:bg-white/10 rounded-2xl font-bold transition-all duration-300 uppercase tracking-widest text-sm border border-white/10 flex items-center group"
+          >
+            <UserCircle className="mr-2 w-5 h-5 group-hover:text-cyan-400 transition-colors" /> 关于自我
           </button>
         </div>
       </section>
