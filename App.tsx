@@ -40,6 +40,8 @@ const App: React.FC = () => {
     navigate('home');
   };
 
+  const logoText = "VECTR";
+
   return (
     <div className="min-h-screen relative selection:bg-cyan-500/30">
       <ParticleBackground />
@@ -49,12 +51,22 @@ const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
           <div 
             onClick={() => navigate('home')} 
-            className="flex items-center space-x-2 cursor-pointer group"
+            className="flex items-center space-x-2 cursor-pointer logo-group"
           >
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
               <Ghost className="w-6 h-6 text-white" />
             </div>
-            <span className="font-orbitron text-2xl font-bold tracking-tighter text-glow uppercase ml-2">Vectr</span>
+            <div className="font-orbitron text-2xl font-bold tracking-tighter text-glow uppercase ml-2 flex">
+              {logoText.split('').map((char, index) => (
+                <span 
+                  key={index} 
+                  className="wave-char" 
+                  style={{ animationDelay: `${index * 0.1}s` }}
+                >
+                  {char}
+                </span>
+              ))}
+            </div>
           </div>
 
           <div className="hidden md:flex items-center space-x-10 font-medium">
@@ -118,7 +130,7 @@ const App: React.FC = () => {
       {/* Footer */}
       <footer className="py-12 border-t border-white/5 glass">
         <div className="max-w-7xl mx-auto px-6 text-center">
-          <p className="text-xs opacity-30 font-bold uppercase tracking-[0.4em]">© 2024 VECTR_SPACE. SIGNAL_STABLE.</p>
+          <p className="text-xs opacity-30 font-bold uppercase tracking-[0.4em]">© 2026 VECTR_SPACE. SIGNAL_STABLE.</p>
         </div>
       </footer>
     </div>

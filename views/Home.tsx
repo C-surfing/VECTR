@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { DB } from '../services/db';
 import { Category } from '../types';
@@ -15,16 +16,31 @@ const Home: React.FC<{ onNavigate: (view: any, id?: string, cat?: Category | 'Al
     { icon: Cpu, title: 'AI', desc: '人工智能', color: 'text-cyan-400' }
   ];
 
+  const heroLogoText = ["V", "E", "C", "T", "R"];
+
   return (
     <div className="space-y-32">
       {/* Hero Section */}
       <section className="relative h-[65vh] flex flex-col items-center justify-center text-center">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-cyan-500/5 blur-[120px] rounded-full -z-10 animate-pulse"></div>
-        <h1 className="font-orbitron text-7xl md:text-9xl font-bold mb-8 tracking-tighter text-glow leading-none select-none uppercase">
-          VEC<span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400">TR</span>
+        
+        <h1 className="font-orbitron text-7xl md:text-9xl font-bold mb-8 tracking-tighter text-glow leading-none select-none uppercase flex hero-logo-group cursor-default">
+          {heroLogoText.map((char, index) => {
+            const isGradient = index >= 3; // 'T' and 'R'
+            return (
+              <span 
+                key={index} 
+                className={`wave-char ${isGradient ? 'bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-400' : ''}`}
+                style={{ animationDelay: `${index * 0.1}s` }}
+              >
+                {char}
+              </span>
+            );
+          })}
         </h1>
-        <p className="text-xl md:text-2xl opacity-60 max-w-2xl font-light mb-12 leading-relaxed tracking-wide px-4">
-          解构代码逻辑，重塑数字审美。一个关于 <span className="text-cyan-400">CS</span>、<span className="text-purple-400">AI</span> 与 <span className="text-indigo-400">数学</span> 的矢量灵感仓库。
+
+        <p className="text-xl md:text-2xl opacity-70 max-w-2xl font-light mb-12 leading-relaxed tracking-[0.2em] px-4 font-orbitron uppercase text-glow">
+          C-surfing的个人博客
         </p>
         
         <div className="flex flex-wrap justify-center gap-6">

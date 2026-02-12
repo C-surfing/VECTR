@@ -39,6 +39,33 @@
         }
         .text-glow { text-shadow: 0 0 15px rgba(34, 211, 238, 0.6), 0 0 30px rgba(139, 92, 246, 0.2); }
         
+        /* Character Wave Animation */
+        .wave-char {
+            display: inline-block;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            will-change: transform, filter;
+        }
+        
+        @keyframes char-wave {
+            0%, 100% { transform: translateY(0) scale(1); filter: brightness(1); }
+            50% { transform: translateY(-15px) scale(1.05); filter: brightness(1.4); }
+        }
+
+        /* Hover trigger for Nav Logo and Hero Logo */
+        .logo-group:hover .wave-char,
+        .hero-logo-group:hover .wave-char {
+            animation: char-wave 1s ease-in-out infinite;
+        }
+
+        .logo-group:hover .wave-char {
+            color: #22d3ee;
+            text-shadow: 0 0 20px rgba(34, 211, 238, 0.8), 0 0 40px rgba(139, 92, 246, 0.4);
+        }
+        
+        .hero-logo-group:hover .wave-char {
+            text-shadow: 0 0 40px rgba(34, 211, 238, 0.5), 0 0 80px rgba(139, 92, 246, 0.3);
+        }
+
         /* Double Shadow Mirage Animations */
         @keyframes drift {
             0% { transform: translate(0, 0) scale(1); }

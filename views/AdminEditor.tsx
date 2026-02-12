@@ -1,9 +1,10 @@
+
 import React, { useState, useRef } from 'react';
 import { DB } from '../services/db';
 import { Category, Post } from '../types';
 import { GoogleGenAI } from "@google/genai";
 import MarkdownContent from '../components/MarkdownContent';
-import { Save, Send, Eye, PenTool, Image as ImageIcon, Video, Sparkles, Check, FileUp, FileText, Upload, X, Loader2 } from 'lucide-react';
+import { Save, Send, Eye, PenTool, Image as ImageIcon, Video, Sparkles, Check, FileUp, FileText, Upload, X, Loader2, PlusCircle } from 'lucide-react';
 
 const CATEGORY_OPTIONS: { name: Category, desc: string }[] = [
   { name: 'CS', desc: '计算机科学与工程' },
@@ -23,9 +24,12 @@ const AdminEditor: React.FC<{ onNavigate: (view: any) => void }> = ({ onNavigate
   const [isPreview, setIsPreview] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const contentImageInputRef = useRef<HTMLInputElement>(null);
+  const coverImageInputRef = useRef<HTMLInputElement>(null);
 
   const handlePublish = () => {
     if (!title || !content || selectedCategories.length === 0) return;
@@ -48,8 +52,12 @@ const AdminEditor: React.FC<{ onNavigate: (view: any) => void }> = ({ onNavigate
       views: 0
     };
 
-    DB.savePost(newPost);
-    onNavigate('blog');
+    try {
+      DB.savePost(newPost);
+      onNavigate('blog');
+    } catch (e) {
+      alert("发布失败：存储空间不足。请减少插图数量或视频大小，或使用外部链接。");
+    }
   };
 
   const toggleCategory = (cat: Category) => {
@@ -73,12 +81,38 @@ const AdminEditor: React.FC<{ onNavigate: (view: any) => void }> = ({ onNavigate
     reader.readAsText(file);
   };
 
+  const handleContentImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target?.result as string;
+      const markdownImage = `\n![图片描述](${base64})\n`;
+      setContent(prev => prev + markdownImage);
+      setUploadingImage(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCoverUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setCoverImage(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleVideoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     if (file.size > 20 * 1024 * 1024) {
-      alert("视频文件超过 20MB，本地存储容量有限，建议使用嵌入链接。");
+      alert("视频文件超过 20MB，本地存储容量有限，建议使用外部链接。");
     }
 
     setUploadingVideo(true);
@@ -87,10 +121,6 @@ const AdminEditor: React.FC<{ onNavigate: (view: any) => void }> = ({ onNavigate
       const base64 = e.target?.result as string;
       setVideoUrl(base64);
       setUploadingVideo(false);
-    };
-    reader.onerror = () => {
-      setUploadingVideo(false);
-      alert("视频读取失败");
     };
     reader.readAsDataURL(file);
   };
@@ -126,13 +156,7 @@ const AdminEditor: React.FC<{ onNavigate: (view: any) => void }> = ({ onNavigate
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileImport} 
-            accept=".md,.txt" 
-            className="hidden" 
-          />
+          <input type="file" ref={fileInputRef} onChange={handleFileImport} accept=".md,.txt" className="hidden" />
           <button 
             onClick={() => fileInputRef.current?.click()}
             className="px-4 py-2.5 glass rounded-xl hover:bg-white/10 transition-all flex items-center text-xs font-bold border-cyan-500/20"
@@ -196,13 +220,23 @@ const AdminEditor: React.FC<{ onNavigate: (view: any) => void }> = ({ onNavigate
                 className="w-full h-[65vh] bg-white/5 border border-white/10 rounded-[32px] p-8 md:p-10 focus:outline-none focus:ring-1 focus:ring-cyan-500/30 resize-none font-mono text-base leading-relaxed transition-all glass hover:bg-white/[0.07]"
               />
               <div className="absolute bottom-8 right-8 flex gap-3">
+                 <input type="file" ref={contentImageInputRef} onChange={handleContentImageUpload} accept="image/*" className="hidden" />
+                 <button 
+                  onClick={() => contentImageInputRef.current?.click()}
+                  disabled={uploadingImage}
+                  className="px-5 py-3 glass hover:bg-white/20 border border-white/10 rounded-2xl backdrop-blur-xl transition-all flex items-center text-sm font-bold disabled:opacity-30 group"
+                  title="插入图片到正文"
+                >
+                  {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ImageIcon className="w-4 h-4 mr-2" /> 插入图片</>}
+                </button>
+
                  <button 
                   onClick={handleAiImprove}
                   disabled={isAiLoading || !content}
                   className="px-6 py-3 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/30 rounded-2xl backdrop-blur-xl transition-all flex items-center text-sm font-bold disabled:opacity-30 group"
                 >
                   {isAiLoading ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 神经网络优化中...</>
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 优化中...</>
                   ) : (
                     <><Sparkles className="w-4 h-4 mr-2 group-hover:rotate-12 transition-transform" /> AI 语义重构</>
                   )}
@@ -215,7 +249,7 @@ const AdminEditor: React.FC<{ onNavigate: (view: any) => void }> = ({ onNavigate
           <div className="lg:col-span-4 space-y-8">
             <div className="glass p-8 rounded-[32px] space-y-8 border border-white/10 shadow-xl">
               <h3 className="font-orbitron font-bold border-b border-white/5 pb-4 flex items-center text-sm tracking-widest text-cyan-400">
-                CONFIG <span className="ml-auto opacity-20 text-[10px]">VER_2.4.0</span>
+                CONFIG <span className="ml-auto opacity-20 text-[10px]">VER_2.5.0</span>
               </h3>
               
               <div className="space-y-6">
@@ -243,7 +277,7 @@ const AdminEditor: React.FC<{ onNavigate: (view: any) => void }> = ({ onNavigate
                 </div>
 
                 <div className="space-y-4">
-                  <label className="text-[10px] opacity-40 block font-bold uppercase tracking-[0.2em]">多媒体资源 / Media</label>
+                  <label className="text-[10px] opacity-40 block font-bold uppercase tracking-[0.2em]">封面资源 / Cover</label>
                   
                   <div className="space-y-3">
                     <div className="relative group">
@@ -251,10 +285,26 @@ const AdminEditor: React.FC<{ onNavigate: (view: any) => void }> = ({ onNavigate
                       <input 
                         type="text" 
                         placeholder="封面图 URL..." 
-                        value={coverImage}
+                        value={coverImage.startsWith('data:') ? '已上传本地图片' : coverImage}
                         onChange={(e) => setCoverImage(e.target.value)}
                         className="w-full bg-white/10 border border-white/10 rounded-2xl p-4 pl-12 focus:outline-none focus:bg-white/[0.15] text-xs transition-all"
+                        disabled={coverImage.startsWith('data:')}
                       />
+                    </div>
+                    
+                    <div className="flex gap-2">
+                       <input type="file" ref={coverImageInputRef} onChange={handleCoverUpload} accept="image/*" className="hidden" />
+                       <button 
+                        onClick={() => coverImageInputRef.current?.click()}
+                        className="flex-1 py-3 glass hover:bg-white/10 border border-white/10 rounded-xl text-[11px] font-bold flex items-center justify-center"
+                       >
+                         <Upload className="w-3 h-3 mr-2" /> 上传封面
+                       </button>
+                       {coverImage && (
+                        <button onClick={() => setCoverImage('')} className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl hover:bg-red-500/20">
+                          <X className="w-4 h-4" />
+                        </button>
+                       )}
                     </div>
 
                     <div className="p-5 bg-white/5 rounded-3xl border border-white/10 space-y-4">
@@ -316,18 +366,9 @@ const AdminEditor: React.FC<{ onNavigate: (view: any) => void }> = ({ onNavigate
               </div>
 
               <div className="pt-6 border-t border-white/5 flex items-center justify-between opacity-30 text-[9px] font-mono">
-                <span>AUTOSAVE_ACTIVE</span>
+                <span>LOCAL_STORAGE_MODE</span>
                 <span>SYNC: {new Date().toLocaleTimeString()}</span>
               </div>
-            </div>
-
-            <div className="glass p-8 rounded-[32px] border border-dashed border-white/10 text-center flex flex-col items-center gap-4 group cursor-default">
-              <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
-                <FileText className="w-6 h-6 opacity-20" />
-              </div>
-              <p className="text-[10px] opacity-40 uppercase tracking-[0.3em] leading-relaxed px-4">
-                Drag and drop your .md archives here to initialize
-              </p>
             </div>
           </div>
         </div>
