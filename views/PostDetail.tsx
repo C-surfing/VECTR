@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Post, Comment, User } from '../types';
 import { DB } from '../services/db';
 import { auth } from '../services/auth';

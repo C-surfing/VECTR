@@ -1,5 +1,4 @@
-
-export type Category = 'CS' | 'TA' | '金融' | '数学' | '光影艺术' | 'AI';
+export type Category = 'CS' | 'TA' | '\u91d1\u878d' | '\u6570\u5b66' | '\u5149\u5f71\u827a\u672f' | 'AI' | '\u751f\u6d3b' | '\u54f2\u5b66';
 
 export interface User {
   id: string;
@@ -31,7 +30,10 @@ export interface Comment {
   userAvatar: string;
   content: string;
   createdAt: number;
+  parentId?: string | null;
 }
+
+export type FriendStatus = 'approved' | 'pending' | 'rejected';
 
 export interface Friend {
   id: string;
@@ -39,4 +41,6 @@ export interface Friend {
   url: string;
   description: string;
   avatar: string;
+  status?: FriendStatus;
+  createdAt?: number;
 }

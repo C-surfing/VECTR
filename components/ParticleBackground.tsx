@@ -1,8 +1,19 @@
-
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 const ParticleBackground: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const mouseRef = useRef({ x: 0, y: 0 });
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    mouseRef.current.x = e.clientX;
+    mouseRef.current.y = e.clientY;
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [handleMouseMove]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -10,137 +21,154 @@ const ParticleBackground: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let particles: Array<{ 
-      x: number; 
-      y: number; 
-      size: number; 
-      speedX: number; 
-      speedY: number; 
-      color: string;
-      opacity: number;
-      fadeSpeed: number;
-      type: 'point' | 'bokeh';
-    }> = [];
+    // 背景图片 - 预加载
+    const bgImage = new Image();
+    bgImage.crossOrigin = 'anonymous';
+    bgImage.src = 'https://ocfbitiofnrjdudakqcf.supabase.co/storage/v1/object/public/media/pexels-diva-32633935.jpg';
     
-    const pointCount = 60;
-    const bokehCount = 15;
+    bgImage.onload = () => {
+      setImageLoaded(true);
+    };
+    bgImage.onerror = () => {
+      setImageLoaded(true);
+    };
+
+    // 简化的粒子系统
+    let particles: Array<{
+      x: number;
+      y: number;
+      radius: number;
+      opacity: number;
+      vx: number;
+      vy: number;
+    }> = [];
 
     const init = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
       particles = [];
-      
-      // Point particles (sharp, small dots)
-      for (let i = 0; i < pointCount; i++) {
-        particles.push({
-          x: Math.random() * canvas.width,
-          y: Math.random() * canvas.height,
-          size: Math.random() * 1.5 + 0.2,
-          speedX: (Math.random() - 0.5) * 0.2,
-          speedY: (Math.random() - 0.5) * 0.2,
-          color: Math.random() > 0.5 ? 'rgba(34, 211, 238,' : 'rgba(139, 92, 246,',
-          opacity: Math.random(),
-          fadeSpeed: 0.002 + Math.random() * 0.005,
-          type: 'point'
-        });
-      }
 
-      // Bokeh particles (large, blurry glowing orbs)
-      for (let i = 0; i < bokehCount; i++) {
+      for (let i = 0; i < 8; i++) {
         particles.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          size: Math.random() * 80 + 40,
-          speedX: (Math.random() - 0.5) * 0.1,
-          speedY: (Math.random() - 0.5) * 0.1,
-          color: Math.random() > 0.5 ? 'rgba(147, 197, 253,' : 'rgba(196, 181, 253,',
-          opacity: Math.random() * 0.3,
-          fadeSpeed: 0.001 + Math.random() * 0.002,
-          type: 'bokeh'
+          radius: Math.random() * 100 + 50,
+          opacity: Math.random() * 0.15 + 0.05,
+          vx: (Math.random() - 0.5) * 0.2,
+          vy: (Math.random() - 0.5) * 0.2,
         });
       }
     };
 
-    const drawParticles = () => {
+    let animationId: number;
+    let frameCount = 0;
+    let time = 0;
+
+    const draw = () => {
       if (!ctx) return;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      time += 0.01;
       
-      // Draw bokeh first (background layer)
+      // 基础深色背景
+      ctx.fillStyle = '#020208';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 绘制背景图片 - 降低模糊度，提高可见度
+      if (imageLoaded && bgImage.complete) {
+        ctx.save();
+        ctx.globalAlpha = 0.35; // 提高透明度
+        ctx.filter = 'blur(12px)'; // 降低模糊度
+        const scale = Math.max(canvas.width / bgImage.width, canvas.height / bgImage.height);
+        const x = (canvas.width - bgImage.width * scale) / 2;
+        const y = (canvas.height - bgImage.height * scale) / 2;
+        ctx.drawImage(bgImage, x, y, bgImage.width * scale, bgImage.height * scale);
+        ctx.restore();
+      }
+
+      // 粒子动画 - 每3帧更新一次位置
+      frameCount++;
+      if (frameCount % 3 === 0) {
+        particles.forEach(p => {
+          p.x += p.vx;
+          p.y += p.vy;
+
+          if (p.x < -p.radius * 2) p.x = canvas.width + p.radius;
+          if (p.x > canvas.width + p.radius * 2) p.x = -p.radius;
+          if (p.y < -p.radius * 2) p.y = canvas.height + p.radius;
+          if (p.y > canvas.height + p.radius * 2) p.y = -p.radius;
+        });
+      }
+
+      // 绘制粒子
       particles.forEach(p => {
-        if (p.type !== 'bokeh') return;
-        
-        p.x += p.speedX;
-        p.y += p.speedY;
-        p.opacity += p.fadeSpeed;
-        if (p.opacity > 0.3 || p.opacity < 0.05) p.fadeSpeed *= -1;
+        const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius);
+        const hue = (p.x / canvas.width) * 60 + 240;
+        gradient.addColorStop(0, `hsla(${hue}, 70%, 60%, ${p.opacity})`);
+        gradient.addColorStop(0.5, `hsla(${hue}, 70%, 60%, ${p.opacity * 0.3})`);
+        gradient.addColorStop(1, `hsla(${hue}, 70%, 60%, 0)`);
 
-        if (p.x < -p.size) p.x = canvas.width + p.size;
-        if (p.x > canvas.width + p.size) p.x = -p.size;
-        if (p.y < -p.size) p.y = canvas.height + p.size;
-        if (p.y > canvas.height + p.size) p.y = -p.size;
-
-        const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
-        gradient.addColorStop(0, `${p.color} ${p.opacity * 0.4})`);
-        gradient.addColorStop(1, `${p.color} 0)`);
-        
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
         ctx.fillStyle = gradient;
+        ctx.globalCompositeOperation = 'screen';
         ctx.fill();
       });
 
-      // Draw points and connections
-      particles.forEach((p, i) => {
-        if (p.type !== 'point') return;
+      ctx.globalCompositeOperation = 'source-over';
 
-        p.x += p.speedX;
-        p.y += p.speedY;
-        p.opacity += p.fadeSpeed;
-        if (p.opacity > 0.8 || p.opacity < 0.2) p.fadeSpeed *= -1;
-
-        if (p.x < 0) p.x = canvas.width;
-        if (p.x > canvas.width) p.x = 0;
-        if (p.y < 0) p.y = canvas.height;
-        if (p.y > canvas.height) p.y = 0;
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = `${p.color} ${p.opacity * 0.6})`;
-        ctx.shadowBlur = 10 * p.opacity;
-        ctx.shadowColor = `${p.color} 0.8)`;
-        ctx.fill();
-        ctx.shadowBlur = 0; // Reset for performance
-
-        // Subtle connections
-        for (let j = i + 1; j < particles.length; j++) {
-            const p2 = particles[j];
-            if (p2.type !== 'point') continue;
-
-            const dx = p.x - p2.x;
-            const dy = p.y - p2.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance < 120) {
-                ctx.beginPath();
-                ctx.strokeStyle = `rgba(147, 197, 253, ${(1 - distance/120) * 0.08 * p.opacity})`;
-                ctx.lineWidth = 0.5;
-                ctx.moveTo(p.x, p.y);
-                ctx.lineTo(p2.x, p2.y);
-                ctx.stroke();
-            }
-        }
-      });
+      // ===== 添加简单高效的光效 =====
       
-      requestAnimationFrame(drawParticles);
+      // 1. 角落光晕效果 (4个角落)
+      const cornerGlow = (x: number, y: number, size: number, hue: number) => {
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+        gradient.addColorStop(0, `hsla(${hue}, 80%, 50%, 0.08)`);
+        gradient.addColorStop(0.5, `hsla(${hue}, 80%, 50%, 0.03)`);
+        gradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      };
+      
+      // 动态角落光晕 - 缓慢脉动
+      const pulse = Math.sin(time * 0.5) * 0.5 + 0.5;
+      cornerGlow(0, 0, 300 + pulse * 100, 260); // 左上 - 紫色
+      cornerGlow(canvas.width, 0, 300 + pulse * 100, 200); // 右上 - 青色
+      cornerGlow(0, canvas.height, 300 + pulse * 100, 280); // 左下 - 品红
+      cornerGlow(canvas.width, canvas.height, 300 + pulse * 100, 220); // 右下 - 蓝色
+
+      // 2. 鼠标跟随光效 (简单圆形光晕)
+      const mouseX = mouseRef.current.x;
+      const mouseY = mouseRef.current.y;
+      const mouseGradient = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, 150);
+      mouseGradient.addColorStop(0, 'rgba(120, 200, 255, 0.06)');
+      mouseGradient.addColorStop(0.5, 'rgba(120, 200, 255, 0.02)');
+      mouseGradient.addColorStop(1, 'transparent');
+      ctx.fillStyle = mouseGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 3. 顶部细微渐变光
+      const topGradient = ctx.createLinearGradient(0, 0, 0, 200);
+      topGradient.addColorStop(0, 'rgba(120, 100, 255, 0.05)');
+      topGradient.addColorStop(1, 'transparent');
+      ctx.fillStyle = topGradient;
+      ctx.fillRect(0, 0, canvas.width, 200);
+
+      // 暗色遮罩 - 降低不透明度让背景更明显
+      ctx.fillStyle = 'rgba(2, 2, 8, 0.25)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      animationId = requestAnimationFrame(draw);
     };
 
     init();
-    drawParticles();
-    
+    draw();
+
     const handleResize = () => init();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animationId);
+    };
+  }, [imageLoaded]);
 
   return <canvas ref={canvasRef} className="fixed inset-0 -z-10 pointer-events-none" />;
 };

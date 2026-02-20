@@ -1,25 +1,112 @@
-import React, { useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { DB } from '../services/db';
-import { Category } from '../types';
-import { Search, Hash } from 'lucide-react';
+import { Post, Category } from '../types';
+import { Search, Loader2, AlertTriangle } from 'lucide-react';
+import LazyImage from '../components/LazyImage';
+import PostCategoryBadges from '../components/PostCategoryBadges';
 
 interface BlogListProps {
   onNavigate: (view: any, id?: string) => void;
   activeCategory: Category | 'All';
   setActiveCategory: (cat: Category | 'All') => void;
+  searchTerm: string;
+  setSearchTerm: (value: string) => void;
 }
 
-const BlogList: React.FC<BlogListProps> = ({ onNavigate, activeCategory, setActiveCategory }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  
-  const posts = DB.getPosts().filter(p => {
-    const matchesCat = activeCategory === 'All' || p.category.includes(activeCategory as Category);
-    const matchesSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          p.excerpt.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesCat && matchesSearch;
-  });
+const BlogList: React.FC<BlogListProps> = ({
+  onNavigate,
+  activeCategory,
+  setActiveCategory,
+  searchTerm,
+  setSearchTerm,
+}) => {
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
-  const categories: (Category | 'All')[] = ['All', 'CS', 'TA', '金融', '数学', '光影艺术', 'AI'];
+  useEffect(() => {
+    const loadPosts = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await DB.getPosts();
+        setPosts(data);
+        if (data.length === 0) {
+          setError('暂无文章，请先发布内容');
+        }
+      } catch (err) {
+        console.error('Error loading posts:', err);
+        setError('加载文章失败，请检查网络连接');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadPosts();
+  }, [retryCount]);
+
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+  };
+
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+  const filteredPosts = useMemo(() => {
+    const keyword = deferredSearchTerm.trim().toLowerCase();
+    return posts.filter((p) => {
+      const matchesCat = activeCategory === 'All' || p.category.includes(activeCategory as Category);
+      const matchesSearch =
+        keyword.length === 0 ||
+        p.title.toLowerCase().includes(keyword) ||
+        p.excerpt.toLowerCase().includes(keyword);
+      return matchesCat && matchesSearch;
+    });
+  }, [posts, activeCategory, deferredSearchTerm]);
+  const categories: (Category | 'All')[] = ['All', 'CS', 'TA', '金融', '数学', '光影艺术', 'AI', '生活', '哲学'];
+  if (loading) {
+    return (
+      <div className="space-y-16">
+        <header className="space-y-8">
+          <div className="border-l-4 border-cyan-500 pl-6">
+              <h1 className="text-5xl font-orbitron font-bold text-glow uppercase tracking-tighter">
+                  归档仓库 <span className="text-cyan-500">.archive</span>
+              </h1>
+              <p className="text-sm opacity-40 mt-2 font-mono uppercase tracking-[0.3em]">Querying history in standard space...</p>
+          </div>
+        </header>
+        <div className="text-center py-20">
+          <div className="animate-pulse text-cyan-400">正在加载时空数据...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-16">
+        <header className="space-y-8">
+          <div className="border-l-4 border-cyan-500 pl-6">
+              <h1 className="text-5xl font-orbitron font-bold text-glow uppercase tracking-tighter">
+                  归档仓库 <span className="text-cyan-500">.archive</span>
+              </h1>
+              <p className="text-sm opacity-40 mt-2 font-mono uppercase tracking-[0.3em]">Querying history in standard space...</p>
+          </div>
+        </header>
+        <div className="text-center py-20 space-y-6">
+          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/20 flex items-center justify-center">
+            <AlertTriangle className="w-8 h-8 text-red-400" />
+          </div>
+          <p className="text-red-400 text-lg">{error}</p>
+          <button 
+            onClick={handleRetry}
+            className="px-6 py-3 bg-cyan-600 rounded-full hover:bg-cyan-500 transition-colors flex items-center mx-auto"
+          >
+            <Loader2 className="w-4 h-4 mr-2" />
+            重试加载
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-16">
@@ -40,6 +127,7 @@ const BlogList: React.FC<BlogListProps> = ({ onNavigate, activeCategory, setActi
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-16 pr-6 py-5 glass rounded-2xl focus:outline-none focus:ring-2 focus:ring-cyan-500/30 text-base font-medium transition-all"
+              aria-label="搜索文章关键词"
             />
           </div>
           <div className="flex flex-wrap gap-2">
@@ -61,7 +149,7 @@ const BlogList: React.FC<BlogListProps> = ({ onNavigate, activeCategory, setActi
       </header>
 
       <div className="grid gap-8">
-        {posts.length > 0 ? posts.map(post => (
+        {filteredPosts.length > 0 ? filteredPosts.map(post => (
           <div 
             key={post.id} 
             onClick={() => onNavigate('post', post.id)}
@@ -69,19 +157,23 @@ const BlogList: React.FC<BlogListProps> = ({ onNavigate, activeCategory, setActi
           >
             {post.coverImage && (
               <div className="w-full md:w-72 h-48 rounded-2xl overflow-hidden shrink-0 relative">
-                <img src={post.coverImage} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 grayscale-[10%] group-hover:grayscale-0" />
+                <LazyImage 
+                  src={post.coverImage} 
+                  alt={post.title}
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 grayscale-[10%] group-hover:grayscale-0"
+                  placeholderClassName="w-full h-full"
+                />
                 <div className="absolute inset-0 bg-black/20"></div>
               </div>
             )}
             <div className="flex flex-col justify-between py-2 flex-1">
               <div>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {post.category.map(cat => (
-                    <span key={cat} className="flex items-center text-xs text-cyan-400 font-bold uppercase tracking-[0.2em] px-3 py-1 bg-cyan-500/10 rounded-lg border border-cyan-500/20">
-                      <Hash className="w-3 h-3 mr-1 opacity-50" /> {cat}
-                    </span>
-                  ))}
-                </div>
+                <PostCategoryBadges
+                  categories={post.category}
+                  coverImage={post.coverImage}
+                  seed={post.id}
+                  className="flex flex-wrap gap-2 mb-4"
+                />
                 <h3 className="text-3xl font-bold mb-4 group-hover:text-cyan-300 transition-colors leading-tight tracking-tight">{post.title}</h3>
                 <p className="opacity-50 text-base line-clamp-2 mb-6 leading-relaxed font-light">{post.excerpt}</p>
               </div>

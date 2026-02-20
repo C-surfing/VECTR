@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>VECTR Blog</title>
+    <link>https://vectr-delta.vercel.app/</link>
+    <description>VECTR 个人博客 RSS</description>
+    <language>zh-CN</language>
+    <lastBuildDate>Tue, 17 Feb 2026 00:00:00 GMT</lastBuildDate>
+  </channel>
+</rss>
