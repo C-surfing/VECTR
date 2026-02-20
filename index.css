@@ -1,0 +1,201 @@
+﻿body {
+    font-family: 'Inter', 'Noto+Sans+SC', sans-serif;
+    background: #020208;
+    color: #e0e0ff;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+}
+.font-orbitron { font-family: 'Orbitron', sans-serif; }
+
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+    outline: 2px solid rgba(34, 211, 238, 0.95);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.2);
+}
+
+.tap-target {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); }
+::-webkit-scrollbar-thumb { background: rgba(6, 182, 212, 0.2); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(6, 182, 212, 0.4); }
+
+/* Glassmorphism Classes */
+.glass {
+    background: rgba(10, 10, 30, 0.35);
+    backdrop-filter: blur(30px) saturate(160%);
+    -webkit-backdrop-filter: blur(30px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+}
+.text-glow { text-shadow: 0 0 15px rgba(34, 211, 238, 0.6), 0 0 30px rgba(139, 92, 246, 0.2); }
+
+/* Character Wave Animation */
+.wave-char {
+    display: inline-block;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    will-change: transform, filter;
+}
+
+
+@keyframes char-wave {
+    0%, 100% { transform: translateY(0) scale(1); filter: brightness(1); }
+    50% { transform: translateY(-15px) scale(1.05); filter: brightness(1.4); }
+}
+
+
+/* Hover trigger for Nav Logo and Hero Logo */
+.logo-group:hover .wave-char,
+.hero-logo-group:hover .wave-char {
+    animation: char-wave 1s ease-in-out infinite;
+}
+
+
+.logo-group:hover .wave-char {
+    color: #22d3ee;
+    text-shadow: 0 0 20px rgba(34, 211, 238, 0.8), 0 0 40px rgba(139, 92, 246, 0.4);
+}
+
+
+.hero-logo-group:hover .wave-char {
+    text-shadow: 0 0 40px rgba(34, 211, 238, 0.5), 0 0 80px rgba(139, 92, 246, 0.3);
+}
+
+
+/* Double Shadow Mirage Animations */
+@keyframes drift {
+    0% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(20px, -30px) scale(1.1); }
+    66% { transform: translate(-10px, 20px) scale(0.9); }
+    100% { transform: translate(0, 0) scale(1); }
+}
+
+
+.mirage-container {
+    position: fixed;
+    inset: 0;
+    z-index: -10;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+
+.mirage-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(140px);
+    mix-blend-mode: screen;
+    opacity: 0.18;
+    animation: drift 25s infinite ease-in-out;
+}
+
+
+/* Glassy scanline effect */
+.scanlines {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%,
+        rgba(0, 0, 0, 0.05) 50%
+    );
+    background-size: 100% 4px;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0.15;
+}
+
+
+/* Noise texture overlay */
+.grain {
+    position: fixed;
+    inset: 0;
+    background-image: url("https://grainy-gradients.vercel.app/noise.svg");
+    opacity: 0.03;
+    pointer-events: none;
+    z-index: 99;
+}
+
+
+.bg-mesh {
+    position: fixed;
+    inset: 0;
+    background-image: radial-gradient(circle at 2px 2px, rgba(255,255,255,0.03) 1px, transparent 0);
+    background-size: 32px 32px;
+    z-index: -5;
+}
+
+/* TOC Mobile Animation */
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.animate-slide-in-right {
+    animation: slideInRight 0.3s ease-out forwards;
+}
+
+/* Fade In Animation */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* Line clamp utility */
+.line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Markdown emphasis fallback: keep visual difference even with CJK fallback fonts */
+.article-content strong {
+    font-weight: 800 !important;
+    color: #d7f5ff !important;
+}
+
+.article-content em {
+    font-style: italic !important;
+    display: inline-block;
+    transform: skewX(-8deg);
+    color: #c7e9ff !important;
+}
+
+.article-content img {
+    cursor: zoom-in;
+}
+
+@media (max-width: 768px) {
+    .article-content p,
+    .article-content li {
+        line-height: 1.75;
+    }
+
+    button,
+    .tap-target {
+        min-height: 44px;
+    }
+}
