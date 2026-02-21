@@ -10,6 +10,7 @@ import {
   hasExcalidrawElements,
   isHttpUrl,
   isLikelyExcalidrawPath,
+  isLikelyExcalidrawMarkdownPath,
   isLikelyImagePath,
   isLikelyMarkdownPath,
   isLikelySvgPath,
@@ -378,7 +379,7 @@ const AdminEditor: React.FC<AdminEditorProps> = ({ onNavigate, onPublish, editPo
     if (!normalized) return null;
 
     if (isHttpUrl(normalized)) {
-      if (isLikelyExcalidrawPath(normalized) || /\.excalidraw\.md$/i.test(normalized)) {
+      if (isLikelyExcalidrawPath(normalized) || isLikelyExcalidrawMarkdownPath(normalized)) {
         return { kind: 'excalidraw', url: normalized };
       }
       if (isLikelySvgPath(normalized)) return { kind: 'svg', url: normalized };
@@ -393,7 +394,9 @@ const AdminEditor: React.FC<AdminEditorProps> = ({ onNavigate, onPublish, editPo
     const cached = cache.get(cacheKey);
     if (cached) {
       if (isSvgFile(file)) return { kind: 'svg', url: cached };
-      if (isLikelyExcalidrawPath(file.name) || isLikelyMarkdownPath(file.name)) return { kind: 'excalidraw', url: cached };
+      if (isLikelyExcalidrawPath(file.name) || isLikelyExcalidrawMarkdownPath(file.name)) {
+        return { kind: 'excalidraw', url: cached };
+      }
       return { kind: 'image', url: cached };
     }
 
@@ -406,7 +409,7 @@ const AdminEditor: React.FC<AdminEditorProps> = ({ onNavigate, onPublish, editPo
       return { kind: 'svg', url };
     }
 
-    if (isLikelyExcalidrawPath(file.name) || isLikelyMarkdownPath(file.name)) {
+    if (isLikelyExcalidrawPath(file.name) || isLikelyExcalidrawMarkdownPath(file.name)) {
       const sceneJson = await parseExcalidrawSceneJsonFromFile(file);
       const jsonFile = new File(
         [sceneJson],
@@ -495,10 +498,13 @@ const AdminEditor: React.FC<AdminEditorProps> = ({ onNavigate, onPublish, editPo
     output = output.replace(/\[\[([^\]]+)\]\]/g, (whole: string, inner: string, offset: number, full: string) => {
       const prevChar = offset > 0 ? full[offset - 1] : '';
       if (prevChar === '!') return whole;
-      const { target, alias } = parseWikiTarget(inner);
-      const label = alias || getPathBasename(target) || target;
+      const { target, alias, anchor, blockId } = parseWikiTarget(inner);
+      const label = alias || anchor || blockId || getPathBasename(target) || target;
       if (isHttpUrl(target)) {
         return `[${label}](${target})`;
+      }
+      if (anchor || blockId) {
+        return `[[${inner}]]`;
       }
       return label;
     });
@@ -625,7 +631,7 @@ const AdminEditor: React.FC<AdminEditorProps> = ({ onNavigate, onPublish, editPo
     if (files.length === 0) return;
 
     const articleFile =
-      files.find((file) => /\.(md|txt)$/i.test(file.name)) ||
+      files.find((file) => /\.(md|markdown|txt)$/i.test(file.name)) ||
       files[0];
     if (!articleFile) return;
 
@@ -634,23 +640,35 @@ const AdminEditor: React.FC<AdminEditorProps> = ({ onNavigate, onPublish, editPo
 
     try {
       const raw = await articleFile.text();
+      const lowerName = articleFile.name.toLowerCase();
+      const isExplicitExcalidraw =
+        /\.excalidraw$/i.test(lowerName) ||
+        isLikelyExcalidrawMarkdownPath(lowerName) ||
+        (/\.json$/i.test(lowerName) && /"elements"\s*:/.test(raw));
+      const isObsidianExcalidraw = /excalidraw-plugin\s*:/i.test(raw) && isLikelyMarkdownPath(lowerName);
 
-      if (/excalidraw-plugin\s*:/i.test(raw) && isLikelyMarkdownPath(articleFile.name)) {
-        setUploadProgress('检测到 Obsidian Excalidraw，正在转换...');
-        const sceneJson = await parseExcalidrawSceneJsonFromFile(articleFile);
-        const normalizedScene = new File(
-          [sceneJson],
-          `${articleFile.name.replace(/\.[^.]+$/, '')}.excalidraw`,
-          { type: 'application/json', lastModified: Date.now() },
-        );
-        const sceneUrl = await uploadDrawingToCloud(normalizedScene);
-        const assets: AssetMap = {};
-        const token = upsertAssetToken(assets, sceneUrl);
-        setContent(buildWithAssetManifest(buildExcalidrawBlock(token), assets));
-        if (!title) {
-          setTitle(articleFile.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '));
+      if (isExplicitExcalidraw || isObsidianExcalidraw) {
+        try {
+          setUploadProgress('检测到 Excalidraw，正在转换...');
+          const sceneJson = await parseExcalidrawSceneJsonFromFile(articleFile);
+          const normalizedScene = new File(
+            [sceneJson],
+            `${articleFile.name.replace(/\.[^.]+$/, '')}.excalidraw`,
+            { type: 'application/json', lastModified: Date.now() },
+          );
+          const sceneUrl = await uploadDrawingToCloud(normalizedScene);
+          const assets: AssetMap = {};
+          const token = upsertAssetToken(assets, sceneUrl);
+          setContent(buildWithAssetManifest(buildExcalidrawBlock(token), assets));
+          if (!title) {
+            setTitle(articleFile.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '));
+          }
+          return;
+        } catch (error) {
+          if (isExplicitExcalidraw) {
+            throw error;
+          }
         }
-        return;
       }
 
       const normalized = await transformObsidianMarkdown(raw, files);

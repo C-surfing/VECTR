@@ -1,6 +1,7 @@
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|avif|heic|heif)$/i;
 const SVG_EXT_RE = /\.svg$/i;
 const EXCALIDRAW_EXT_RE = /\.(excalidraw|json)$/i;
+const EXCALIDRAW_MD_EXT_RE = /\.excalidraw\.md$/i;
 const MARKDOWN_EXT_RE = /\.md$/i;
 
 export const stripBom = (value: string): string => value.replace(/^\uFEFF/, '');
@@ -43,13 +44,48 @@ export const isLikelyImagePath = (value: string): boolean => IMAGE_EXT_RE.test(g
 export const isLikelySvgPath = (value: string): boolean => SVG_EXT_RE.test(getPathForExtMatch(value));
 export const isLikelyExcalidrawPath = (value: string): boolean =>
   EXCALIDRAW_EXT_RE.test(getPathForExtMatch(value));
+export const isLikelyExcalidrawMarkdownPath = (value: string): boolean =>
+  EXCALIDRAW_MD_EXT_RE.test(getPathForExtMatch(value));
 export const isLikelyMarkdownPath = (value: string): boolean => MARKDOWN_EXT_RE.test(getPathForExtMatch(value));
 
-export const parseWikiTarget = (raw: string): { target: string; alias: string } => {
+export const parseWikiTarget = (raw: string): {
+  target: string;
+  alias: string;
+  anchor: string;
+  blockId: string;
+  rawTarget: string;
+} => {
   const [left, ...rest] = String(raw || '').split('|');
+  const rawTarget = String(left || '').trim();
+  const alias = String(rest.join('|') || '').trim();
+  let base = rawTarget;
+  let anchor = '';
+  let blockId = '';
+
+  const hashIndex = base.indexOf('#');
+  if (hashIndex >= 0) {
+    anchor = base.slice(hashIndex + 1);
+    base = base.slice(0, hashIndex);
+  }
+
+  const caretInAnchor = anchor.indexOf('^');
+  if (caretInAnchor >= 0) {
+    blockId = anchor.slice(caretInAnchor + 1);
+    anchor = anchor.slice(0, caretInAnchor);
+  } else {
+    const caretIndex = base.indexOf('^');
+    if (caretIndex >= 0) {
+      blockId = base.slice(caretIndex + 1);
+      base = base.slice(0, caretIndex);
+    }
+  }
+
   return {
-    target: normalizeObsidianPath(left || ''),
-    alias: String(rest.join('|') || '').trim(),
+    target: normalizeObsidianPath(base || ''),
+    alias,
+    anchor: decodeURIComponent(anchor || '').trim(),
+    blockId: decodeURIComponent(blockId || '').trim(),
+    rawTarget,
   };
 };
 

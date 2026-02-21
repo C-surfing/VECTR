@@ -6,6 +6,7 @@ import {
   getPathBasename,
   isHttpUrl,
   isLikelyExcalidrawPath,
+  isLikelyExcalidrawMarkdownPath,
   isLikelyImagePath,
   isLikelySvgPath,
   normalizeObsidianPath,
@@ -449,6 +450,59 @@ const generateHeadingId = (text: string): string => {
     .replace(/^-+|-+$/g, '');
 };
 
+const stripObsidianBlockId = (value: string): string =>
+  String(value || '').replace(/\s+\^[\w-]+$/, '');
+
+const normalizeHeadingText = (value: string): string =>
+  stripObsidianBlockId(value).replace(/\s+#+\s*$/, '').trim();
+
+const stripObsidianComments = (lines: string[]): string[] => {
+  const cleaned: string[] = [];
+  let inBlockComment = false;
+
+  lines.forEach((rawLine) => {
+    const line = String(rawLine || '');
+    const trimmed = line.trim();
+
+    if (trimmed === '%%') {
+      inBlockComment = !inBlockComment;
+      return;
+    }
+
+    if (inBlockComment) return;
+
+    if (line.includes('%%')) {
+      const next = line.replace(/%%.*?%%/g, '');
+      if (next.trim() !== '' || trimmed === '') {
+        cleaned.push(next);
+      }
+      return;
+    }
+
+    cleaned.push(line);
+  });
+
+  return cleaned;
+};
+
+const parseObsidianEmbedAlias = (
+  alias: string,
+): { label: string; width?: number; height?: number } => {
+  const trimmed = String(alias || '').trim();
+  if (!trimmed) return { label: '' };
+
+  const sizeMatch = trimmed.match(/^(\d+)?(?:x(\d+)?)?$/i);
+  if (sizeMatch && trimmed.replace(/x/gi, '').length > 0) {
+    const width = sizeMatch[1] ? Number(sizeMatch[1]) : undefined;
+    const height = sizeMatch[2] ? Number(sizeMatch[2]) : undefined;
+    if (width || height) {
+      return { label: '', width, height };
+    }
+  }
+
+  return { label: trimmed };
+};
+
 const stripLeadingFrontmatter = (raw: string): string => {
   const lines = raw.split('\n');
   if (lines.length < 3) return raw;
@@ -591,16 +645,30 @@ const renderObsidianEmbed = (
   const resolvedTarget = resolveAssetSrc(target, assetMap) || target;
   const normalized = normalizeObsidianPath(resolvedTarget);
   if (!normalized) return null;
-  const label = alias || getPathBasename(normalized) || normalized;
+  const aliasMeta = parseObsidianEmbedAlias(alias);
+  const label = aliasMeta.label || getPathBasename(normalized) || normalized;
+  const sizeStyle =
+    aliasMeta.width || aliasMeta.height
+      ? {
+          width: aliasMeta.width ? `${aliasMeta.width}px` : undefined,
+          height: aliasMeta.height ? `${aliasMeta.height}px` : undefined,
+          maxWidth: '100%',
+        }
+      : undefined;
 
-  if (isLikelyExcalidrawPath(normalized) || /\.excalidraw\.md$/i.test(normalized)) {
+  if (isLikelyExcalidrawPath(normalized) || isLikelyExcalidrawMarkdownPath(normalized)) {
     return <ExcalidrawEmbed key={key} src={normalized} />;
   }
 
   if (isLikelySvgPath(normalized)) {
     return (
       <div key={key} className="my-6 rounded-2xl overflow-hidden border border-white/10 bg-white/5 p-2">
-        <LazyImage src={normalized} alt={label || 'svg-diagram'} className="w-full h-auto" />
+        <LazyImage
+          src={normalized}
+          alt={label || 'svg-diagram'}
+          className={`h-auto ${sizeStyle ? '' : 'w-full'}`}
+          style={sizeStyle}
+        />
       </div>
     );
   }
@@ -608,7 +676,12 @@ const renderObsidianEmbed = (
   if (isLikelyImagePath(normalized)) {
     return (
       <div key={key} className="my-6">
-        <LazyImage src={normalized} alt={label || 'image'} className="w-full rounded-2xl border border-white/10" />
+        <LazyImage
+          src={normalized}
+          alt={label || 'image'}
+          className={`rounded-2xl border border-white/10 ${sizeStyle ? '' : 'w-full'}`}
+          style={sizeStyle}
+        />
       </div>
     );
   }
@@ -640,12 +713,13 @@ const parseMarkdown = (content: string): React.ReactNode[] => {
   const elements: React.ReactNode[] = [];
   const { body, assets } = splitAssetManifest(stripLeadingFrontmatter(content));
   const extracted = extractFootnotes(body);
-  const lines = extracted.body.split('\n');
+  const lines = stripObsidianComments(extracted.body.split('\n'));
   const footnotes = extracted.footnotes;
   
   let i = 0;
   while (i < lines.length) {
-    const line = lines[i];
+    const rawLine = lines[i];
+    const line = stripObsidianBlockId(rawLine);
     
     // 空行
     if (line.trim() === '') {
@@ -727,6 +801,31 @@ const parseMarkdown = (content: string): React.ReactNode[] => {
       i++;
       continue;
     }
+
+    const nextLine = lines[i + 1] ?? '';
+    const setextMatch = nextLine.match(/^\s{0,3}(=+|-+)\s*$/);
+    const isSetextCandidate =
+      line.trim() !== '' && !line.trim().startsWith('>') && !line.trim().startsWith('|') && !getListInfo(line).isList;
+    if (setextMatch && isSetextCandidate) {
+      const level = setextMatch[1].startsWith('=') ? 1 : 2;
+      const text = normalizeHeadingText(line);
+      const id = generateHeadingId(text);
+      if (level === 1) {
+        elements.push(
+          <h1 key={i} id={id} className="text-4xl font-bold mt-8 mb-4 text-glow">
+            {renderInlineMarkdown(text, assets, footnotes)}
+          </h1>,
+        );
+      } else {
+        elements.push(
+          <h2 key={i} id={id} className="text-3xl font-bold mt-8 mb-4">
+            {renderInlineMarkdown(text, assets, footnotes)}
+          </h2>,
+        );
+      }
+      i += 2;
+      continue;
+    }
     
     // 分割线 ---
     if (/^---+$/.test(line.trim()) || /^\*\*\*+$/.test(line.trim()) || /^___+$/.test(line.trim())) {
@@ -752,8 +851,8 @@ const parseMarkdown = (content: string): React.ReactNode[] => {
     }
     
     // 一级标题 #
-    if (/^#\s+/.test(line)) {
-      const text = line.replace(/^#\s+/, '');
+    if (/^\s{0,3}#(?!#)\s*/.test(line)) {
+      const text = normalizeHeadingText(line.replace(/^\s{0,3}#(?!#)\s*/, ''));
       const id = generateHeadingId(text);
       elements.push(<h1 key={i} id={id} className="text-4xl font-bold mt-8 mb-4 text-glow">{renderInlineMarkdown(text, assets, footnotes)}</h1>);
       i++;
@@ -761,8 +860,8 @@ const parseMarkdown = (content: string): React.ReactNode[] => {
     }
     
     // 二级标题 ##
-    if (/^##\s+/.test(line)) {
-      const text = line.replace(/^##\s+/, '');
+    if (/^\s{0,3}##(?!#)\s*/.test(line)) {
+      const text = normalizeHeadingText(line.replace(/^\s{0,3}##(?!#)\s*/, ''));
       const id = generateHeadingId(text);
       elements.push(<h2 key={i} id={id} className="text-3xl font-bold mt-8 mb-4">{renderInlineMarkdown(text, assets, footnotes)}</h2>);
       i++;
@@ -770,32 +869,32 @@ const parseMarkdown = (content: string): React.ReactNode[] => {
     }
     
     // 三级标题 ###
-    if (/^###\s+/.test(line)) {
-      const text = line.replace(/^###\s+/, '');
+    if (/^\s{0,3}###(?!#)\s*/.test(line)) {
+      const text = normalizeHeadingText(line.replace(/^\s{0,3}###(?!#)\s*/, ''));
       elements.push(<h3 key={i} className="text-2xl font-bold mt-6 mb-3">{renderInlineMarkdown(text, assets, footnotes)}</h3>);
       i++;
       continue;
     }
 
     // 四级标题 ####
-    if (/^####\s+/.test(line)) {
-      const text = line.replace(/^####\s+/, '');
+    if (/^\s{0,3}####(?!#)\s*/.test(line)) {
+      const text = normalizeHeadingText(line.replace(/^\s{0,3}####(?!#)\s*/, ''));
       elements.push(<h4 key={i} className="text-xl font-bold mt-5 mb-2">{renderInlineMarkdown(text, assets, footnotes)}</h4>);
       i++;
       continue;
     }
 
     // 五级标题 #####
-    if (/^#####\s+/.test(line)) {
-      const text = line.replace(/^#####\s+/, '');
+    if (/^\s{0,3}#####(?!#)\s*/.test(line)) {
+      const text = normalizeHeadingText(line.replace(/^\s{0,3}#####(?!#)\s*/, ''));
       elements.push(<h5 key={i} className="text-lg font-bold mt-4 mb-2">{renderInlineMarkdown(text, assets, footnotes)}</h5>);
       i++;
       continue;
     }
 
     // 六级标题 ######
-    if (/^######\s+/.test(line)) {
-      const text = line.replace(/^######\s+/, '');
+    if (/^\s{0,3}######(?!#)\s*/.test(line)) {
+      const text = normalizeHeadingText(line.replace(/^\s{0,3}######(?!#)\s*/, ''));
       elements.push(<h6 key={i} className="text-base font-bold mt-4 mb-2">{renderInlineMarkdown(text, assets, footnotes)}</h6>);
       i++;
       continue;
@@ -809,7 +908,7 @@ const parseMarkdown = (content: string): React.ReactNode[] => {
         i++;
       }
 
-      const calloutHeader = quoteLines[0]?.match(/^\[!([a-zA-Z0-9_-]+)\]\s*(.*)$/);
+      const calloutHeader = quoteLines[0]?.match(/^\[!([a-zA-Z0-9_-]+)\](?:\s*[+-])?\s*(.*)$/);
       if (calloutHeader) {
         const calloutType = calloutHeader[1];
         const calloutTitle = calloutHeader[2] || '';
@@ -961,12 +1060,26 @@ const renderInlineMarkdown = (
     if (obsidianEmbedMatch) {
       const { target, alias } = parseWikiTarget(obsidianEmbedMatch[1]);
       const normalized = normalizeObsidianPath(resolveAssetSrc(target, assetMap) || target);
-      const alt = alias || getPathBasename(normalized) || 'embed';
+      const aliasMeta = parseObsidianEmbedAlias(alias);
+      const alt = aliasMeta.label || getPathBasename(normalized) || 'embed';
+      const inlineStyle =
+        aliasMeta.width || aliasMeta.height
+          ? {
+              width: aliasMeta.width ? `${aliasMeta.width}px` : undefined,
+              height: aliasMeta.height ? `${aliasMeta.height}px` : undefined,
+              maxWidth: '100%',
+            }
+          : undefined;
 
       if (normalized && (isLikelyImagePath(normalized) || isLikelySvgPath(normalized) || isHttpUrl(normalized))) {
         parts.push(
           <span key={key++}>
-            <LazyImage src={normalized} alt={alt} className="inline w-32 h-32 rounded-lg mx-2 align-middle" />
+            <LazyImage
+              src={normalized}
+              alt={alt}
+              className="inline w-32 h-32 rounded-lg mx-2 align-middle"
+              style={inlineStyle}
+            />
           </span>,
         );
       } else {
@@ -992,11 +1105,22 @@ const renderInlineMarkdown = (
     // 匹配 Obsidian Wiki 链接 [[target|alias]]
     const wikiLinkMatch = remaining.match(/^\[\[([^\]]+)\]\]/);
     if (wikiLinkMatch) {
-      const { target, alias } = parseWikiTarget(wikiLinkMatch[1]);
+      const { target, alias, anchor, blockId } = parseWikiTarget(wikiLinkMatch[1]);
       const normalized = normalizeObsidianPath(resolveAssetSrc(target, assetMap) || target);
-      const label = alias || getPathBasename(normalized) || normalized;
+      const label = alias || anchor || blockId || getPathBasename(normalized) || normalized;
 
-      if (normalized && isHttpUrl(normalized)) {
+      if (!normalized && anchor) {
+        const id = generateHeadingId(anchor);
+        parts.push(
+          <a
+            key={key++}
+            href={`#${id}`}
+            className="text-cyan-400 hover:text-cyan-300 underline underline-offset-4 decoration-cyan-500/30"
+          >
+            {label}
+          </a>,
+        );
+      } else if (normalized && isHttpUrl(normalized)) {
         parts.push(
           <a
             key={key++}
