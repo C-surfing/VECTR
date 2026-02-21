@@ -291,14 +291,3 @@ export const parseExcalidrawScene = (raw: string): ParsedExcalidrawScene | null 
 
   return null;
 };
-
-// Kept for compatibility with existing callers.
-export const extractExcalidrawJsonFromMarkdown = (markdown: string): string | null => {
-  const scene = parseExcalidrawScene(markdown);
-  return scene ? JSON.stringify(scene) : null;
-};
-
-export const hasExcalidrawElements = (value: unknown): boolean => {
-  const scene = normalizeSceneCandidate(value);
-  return Boolean(scene && Array.isArray(scene.elements));
-};

@@ -12,6 +12,7 @@ const IS_LOCAL_DATA_PROVIDER = DATA_PROVIDER === 'local' || DATA_PROVIDER === 'b
 
 const LOCAL_KEYS = {
   POSTS: 'vectr_local_posts',
+  POSTS_REMOTE_SNAPSHOT: 'vectr_remote_posts_snapshot',
   COMMENTS: 'vectr_local_comments',
   FRIENDS: 'vectr_local_friends',
 };
@@ -56,6 +57,24 @@ const readLocalPosts = (): Post[] => {
 const writeLocalPosts = (posts: Post[]): void => {
   const normalized = [...posts].sort((a, b) => b.createdAt - a.createdAt);
   writeJson(LOCAL_KEYS.POSTS, normalized);
+};
+
+const readRemotePostsSnapshot = (): Post[] => {
+  const posts = readJson<Post[]>(LOCAL_KEYS.POSTS_REMOTE_SNAPSHOT, []);
+  return Array.isArray(posts) ? posts : [];
+};
+
+const writeRemotePostsSnapshot = (posts: Post[]): void => {
+  const normalized = [...posts].sort((a, b) => b.createdAt - a.createdAt);
+  writeJson(LOCAL_KEYS.POSTS_REMOTE_SNAPSHOT, normalized);
+};
+
+const mergePostsById = (left: Post[], right: Post[]): Post[] => {
+  const merged = new Map<string, Post>();
+  for (const post of [...left, ...right]) {
+    merged.set(post.id, post);
+  }
+  return Array.from(merged.values()).sort((a, b) => b.createdAt - a.createdAt);
 };
 
 const readLocalComments = (): Comment[] => {
@@ -252,7 +271,7 @@ const queryWithRetry = async <T>(
   }
   
   console.error('Query failed after all retries:', lastError);
-  return [];
+  throw (lastError instanceof Error ? lastError : new Error('Remote query failed'));
 };
 
 export const DB = {
@@ -264,12 +283,18 @@ export const DB = {
     }
     
     let posts: Post[] = [];
+    const remoteSnapshot = readRemotePostsSnapshot();
 
     if (IS_LOCAL_DATA_PROVIDER) {
       posts = readLocalPosts();
     } else if (IS_DOMESTIC_DATA_PROVIDER) {
-      const payload = await fetchDomesticJson<{ data: Post[] }>('/posts');
-      posts = Array.isArray(payload.data) ? payload.data : [];
+      try {
+        const payload = await fetchDomesticJson<{ data: Post[] }>('/posts');
+        posts = Array.isArray(payload.data) ? payload.data : [];
+      } catch (error) {
+        console.warn('[posts] domestic read failed, fallback to snapshot/local', error);
+        posts = remoteSnapshot;
+      }
     } else {
       try {
         const data = await queryWithRetry(async () => {
@@ -280,17 +305,24 @@ export const DB = {
         });
         posts = data.map(transformPost);
       } catch (error) {
-        console.warn('[posts] remote read failed, fallback to local', error);
-        posts = [];
+        console.warn('[posts] remote read failed, fallback to snapshot/local', error);
+        posts = remoteSnapshot;
+      }
+    }
+
+    if (!IS_LOCAL_DATA_PROVIDER) {
+      if (posts.length === 0 && remoteSnapshot.length > 0) {
+        console.warn('[posts] remote returned empty, using last snapshot');
+        posts = remoteSnapshot;
       }
 
       const localPosts = readLocalPosts();
       if (localPosts.length > 0) {
-        const merged = new Map<string, Post>();
-        for (const post of [...posts, ...localPosts]) {
-          merged.set(post.id, post);
-        }
-        posts = Array.from(merged.values()).sort((a, b) => b.createdAt - a.createdAt);
+        posts = mergePostsById(posts, localPosts);
+      }
+
+      if (posts.length > 0) {
+        writeRemotePostsSnapshot(posts);
       }
     }
     
@@ -332,18 +364,34 @@ export const DB = {
       return null;
     }
 
-    const data = await queryWithRetry(async () => {
-      return await supabase
-        .from('posts')
-        .select('*')
-        .eq('id', id)
-        .limit(1);
-    });
+    try {
+      const data = await queryWithRetry(async () => {
+        return await supabase
+          .from('posts')
+          .select('*')
+          .eq('id', id)
+          .limit(1);
+      });
 
-    if (data.length > 0) {
-      const post = transformPost(data[0]);
-      mergePostIntoCache(post);
-      return post;
+      if (data.length > 0) {
+        const post = transformPost(data[0]);
+        mergePostIntoCache(post);
+        return post;
+      }
+    } catch (error) {
+      console.warn('[post] remote read failed, fallback to snapshot/local', error);
+    }
+
+    const snapshotPost = readRemotePostsSnapshot().find((post) => post.id === id);
+    if (snapshotPost) {
+      mergePostIntoCache(snapshotPost);
+      return snapshotPost;
+    }
+
+    const localPost = readLocalPosts().find((post) => post.id === id);
+    if (localPost) {
+      mergePostIntoCache(localPost);
+      return localPost;
     }
 
     if (!forceRefresh) {
@@ -382,6 +430,7 @@ export const DB = {
           body: JSON.stringify(post),
         });
         mergePostIntoCache(post);
+        writeRemotePostsSnapshot(mergePostsById(readRemotePostsSnapshot(), [post]));
         return 'remote';
       } catch (error) {
         if (requireRemote) {
@@ -431,6 +480,7 @@ export const DB = {
     }
     
     mergePostIntoCache(post);
+    writeRemotePostsSnapshot(mergePostsById(readRemotePostsSnapshot(), [post]));
     return 'remote';
   },
 
@@ -439,6 +489,7 @@ export const DB = {
     if (IS_LOCAL_DATA_PROVIDER) {
       const localPosts = readLocalPosts().filter((post) => post.id !== id);
       writeLocalPosts(localPosts);
+      writeRemotePostsSnapshot(readRemotePostsSnapshot().filter((post) => post.id !== id));
       const localComments = readLocalComments().filter((comment) => comment.postId !== id);
       writeLocalComments(localComments);
       if (postsCache) {
@@ -455,6 +506,7 @@ export const DB = {
       await fetchDomesticJson<{ success: boolean }>(`/posts?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
+      writeRemotePostsSnapshot(readRemotePostsSnapshot().filter((post) => post.id !== id));
 
       if (postsCache) {
         postsCache = {
@@ -492,6 +544,7 @@ export const DB = {
 
     const localPosts = readLocalPosts().filter((post) => post.id !== id);
     writeLocalPosts(localPosts);
+    writeRemotePostsSnapshot(readRemotePostsSnapshot().filter((post) => post.id !== id));
     const localComments = readLocalComments().filter((comment) => comment.postId !== id);
     writeLocalComments(localComments);
 
