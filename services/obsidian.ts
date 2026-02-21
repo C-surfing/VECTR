@@ -1,3 +1,10 @@
+import {
+  decompress,
+  decompressFromBase64,
+  decompressFromEncodedURIComponent,
+  decompressFromUTF16,
+} from 'lz-string';
+
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|avif|heic|heif)$/i;
 const SVG_EXT_RE = /\.svg$/i;
 const EXCALIDRAW_EXT_RE = /\.(excalidraw|json)$/i;
@@ -89,49 +96,209 @@ export const parseWikiTarget = (raw: string): {
   };
 };
 
-// Extract scene JSON from Obsidian Excalidraw markdown file.
-export const extractExcalidrawJsonFromMarkdown = (markdown: string): string | null => {
-  const text = stripBom(String(markdown || ''));
-  if (!text) return null;
+type LooseObject = Record<string, unknown>;
 
-  // Most common: fenced json block.
-  const fencedBlocks = [
-    /```json\s*([\s\S]*?)\s*```/gi,
-    /```excalidraw\s*([\s\S]*?)\s*```/gi,
-    /```(?:compressed-json|jsonc)\s*([\s\S]*?)\s*```/gi,
-  ];
+export type ParsedExcalidrawScene = {
+  elements: LooseObject[];
+  appState?: LooseObject;
+  files?: Record<string, unknown>;
+};
 
-  for (const pattern of fencedBlocks) {
-    let match: RegExpExecArray | null = null;
-    while ((match = pattern.exec(text)) !== null) {
-      const candidate = String(match[1] || '').trim();
-      if (!candidate) continue;
+const isLooseObject = (value: unknown): value is LooseObject =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const normalizeSceneCandidate = (value: unknown): ParsedExcalidrawScene | null => {
+  if (Array.isArray(value)) {
+    return {
+      elements: value.filter((item): item is LooseObject => isLooseObject(item)),
+    };
+  }
+
+  if (!isLooseObject(value)) {
+    return null;
+  }
+
+  const sceneFromSelf = value;
+  const sceneFromNested = isLooseObject(value.scene) ? value.scene : null;
+  const sceneFromData = isLooseObject(value.data) ? value.data : null;
+  const sceneSource =
+    (Array.isArray(sceneFromSelf.elements) && sceneFromSelf) ||
+    (sceneFromNested && Array.isArray(sceneFromNested.elements) && sceneFromNested) ||
+    (sceneFromData && Array.isArray(sceneFromData.elements) && sceneFromData);
+
+  if (!sceneSource) {
+    return null;
+  }
+
+  const elements = Array.isArray(sceneSource.elements)
+    ? sceneSource.elements.filter((item): item is LooseObject => isLooseObject(item))
+    : [];
+
+  const appState =
+    (isLooseObject(sceneSource.appState) && sceneSource.appState) ||
+    (isLooseObject(value.appState) && value.appState) ||
+    undefined;
+  const filesSource =
+    (isLooseObject(sceneSource.files) && sceneSource.files) ||
+    (isLooseObject(value.files) && value.files) ||
+    undefined;
+
+  return {
+    elements,
+    appState,
+    files: filesSource as Record<string, unknown> | undefined,
+  };
+};
+
+const tryParseJsonScene = (raw: string): ParsedExcalidrawScene | null => {
+  try {
+    const parsed = JSON.parse(raw);
+    return normalizeSceneCandidate(parsed);
+  } catch {
+    return null;
+  }
+};
+
+const normalizeCompressedPayload = (raw: string): string[] => {
+  const trimmed = stripBom(String(raw || '')).trim();
+  if (!trimmed) return [];
+  const compact = trimmed.replace(/\s+/g, '');
+  return Array.from(new Set([trimmed, compact].filter(Boolean)));
+};
+
+const decodeCompressedText = (payload: string): string[] => {
+  const decoded: string[] = [];
+  const attempts = [decompressFromBase64, decompressFromEncodedURIComponent, decompressFromUTF16, decompress];
+  for (const candidate of normalizeCompressedPayload(payload)) {
+    for (const decoder of attempts) {
       try {
-        const parsed = JSON.parse(candidate);
-        if (hasExcalidrawElements(parsed)) {
-          return JSON.stringify(parsed);
+        const result = decoder(candidate);
+        if (typeof result === 'string' && result.trim()) {
+          decoded.push(result);
         }
       } catch {
-        // ignore and continue
+        // ignore decoder errors
       }
     }
   }
+  return Array.from(new Set(decoded));
+};
 
-  // Fallback: whole document is already JSON.
+const parseCompressedScene = (raw: string): ParsedExcalidrawScene | null => {
+  const trimmed = stripBom(String(raw || '')).trim();
+  if (!trimmed) return null;
+
+  const directJson = tryParseJsonScene(trimmed);
+  if (directJson) return directJson;
+
+  const rawStringCandidates = new Set<string>(normalizeCompressedPayload(trimmed));
   try {
-    const parsed = JSON.parse(text);
-    if (hasExcalidrawElements(parsed)) {
-      return JSON.stringify(parsed);
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed === 'string' && parsed.trim()) {
+      rawStringCandidates.add(parsed.trim());
     }
   } catch {
     // ignore
   }
 
+  for (const candidate of rawStringCandidates) {
+    for (const decoded of decodeCompressedText(candidate)) {
+      const scene = tryParseJsonScene(decoded);
+      if (scene) {
+        return scene;
+      }
+      try {
+        const parsedDecoded = JSON.parse(decoded);
+        const normalized = normalizeSceneCandidate(parsedDecoded);
+        if (normalized) {
+          return normalized;
+        }
+        if (typeof parsedDecoded === 'string') {
+          const nested = tryParseJsonScene(parsedDecoded);
+          if (nested) {
+            return nested;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   return null;
 };
 
+const parseSceneFromFencedBlocks = (text: string): ParsedExcalidrawScene | null => {
+  const fencePattern = /```([^\n`]*)\n([\s\S]*?)```/g;
+  let match: RegExpExecArray | null = null;
+  while ((match = fencePattern.exec(text)) !== null) {
+    const language = String(match[1] || '').trim().toLowerCase();
+    const body = String(match[2] || '').trim();
+    if (!body) continue;
+
+    const isCompressedBlock =
+      language === 'compressed-json' ||
+      language === 'compressedjson' ||
+      language.includes('compressed-json');
+    if (isCompressedBlock) {
+      const compressedScene = parseCompressedScene(body);
+      if (compressedScene) {
+        return compressedScene;
+      }
+      continue;
+    }
+
+    const maybeJsonBlock =
+      language === 'json' ||
+      language === 'jsonc' ||
+      language === 'excalidraw' ||
+      language.includes('json') ||
+      language.includes('excalidraw');
+    if (maybeJsonBlock) {
+      const scene = tryParseJsonScene(body);
+      if (scene) {
+        return scene;
+      }
+      const compressedFallback = parseCompressedScene(body);
+      if (compressedFallback) {
+        return compressedFallback;
+      }
+      continue;
+    }
+
+    const unlabeled = tryParseJsonScene(body);
+    if (unlabeled) {
+      return unlabeled;
+    }
+  }
+
+  return null;
+};
+
+// Parse Excalidraw scene from raw JSON / .excalidraw / .json / .excalidraw.md.
+export const parseExcalidrawScene = (raw: string): ParsedExcalidrawScene | null => {
+  const text = stripBom(String(raw || ''));
+  if (!text.trim()) return null;
+
+  const direct = tryParseJsonScene(text);
+  if (direct) return direct;
+
+  const fenced = parseSceneFromFencedBlocks(text);
+  if (fenced) return fenced;
+
+  const compressed = parseCompressedScene(text);
+  if (compressed) return compressed;
+
+  return null;
+};
+
+// Kept for compatibility with existing callers.
+export const extractExcalidrawJsonFromMarkdown = (markdown: string): string | null => {
+  const scene = parseExcalidrawScene(markdown);
+  return scene ? JSON.stringify(scene) : null;
+};
+
 export const hasExcalidrawElements = (value: unknown): boolean => {
-  if (!value || typeof value !== 'object') return false;
-  const scene = value as { elements?: unknown; scene?: { elements?: unknown } };
-  return Array.isArray(scene.elements) || Array.isArray(scene.scene?.elements);
+  const scene = normalizeSceneCandidate(value);
+  return Boolean(scene && Array.isArray(scene.elements));
 };

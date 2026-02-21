@@ -5,9 +5,7 @@ import { Category, Post } from '../types';
 import { GoogleGenAI } from '@google/genai';
 import MarkdownContent from '../components/MarkdownContent';
 import {
-  extractExcalidrawJsonFromMarkdown,
   getPathBasename,
-  hasExcalidrawElements,
   isHttpUrl,
   isLikelyExcalidrawPath,
   isLikelyExcalidrawMarkdownPath,
@@ -15,7 +13,9 @@ import {
   isLikelyMarkdownPath,
   isLikelySvgPath,
   normalizeObsidianPath,
+  parseExcalidrawScene,
   parseWikiTarget,
+  stripBom,
 } from '../services/obsidian';
 import {
   Send,
@@ -129,30 +129,11 @@ const AdminEditor: React.FC<AdminEditorProps> = ({ onNavigate, onPublish, editPo
     });
 
   const parseExcalidrawSceneJsonFromFile = async (file: File): Promise<string> => {
-    const rawText = String(await file.text()).trim();
-    const lowerName = file.name.toLowerCase();
-    const isMarkdown = isLikelyMarkdownPath(lowerName);
-
-    let sceneRaw = rawText;
-    if (isMarkdown) {
-      const extracted = extractExcalidrawJsonFromMarkdown(rawText);
-      if (!extracted) {
-        throw new Error('未在 Obsidian Excalidraw Markdown 中找到 JSON 场景块');
-      }
-      sceneRaw = extracted;
+    const rawText = stripBom(String(await file.text()));
+    const scene = parseExcalidrawScene(rawText);
+    if (!scene) {
+      throw new Error('无法解析 Excalidraw 场景（支持 .excalidraw/.json/.excalidraw.md，含 compressed-json）');
     }
-
-    let scene: unknown = null;
-    try {
-      scene = JSON.parse(sceneRaw);
-    } catch {
-      throw new Error('Excalidraw 文件不是有效 JSON');
-    }
-
-    if (!hasExcalidrawElements(scene)) {
-      throw new Error('未检测到 Excalidraw elements 字段');
-    }
-
     return JSON.stringify(scene);
   };
 
