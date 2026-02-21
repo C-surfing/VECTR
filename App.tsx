@@ -32,6 +32,33 @@ type SeoPostState = {
 
 const VALID_CATEGORIES: Category[] = ['CS', 'TA', '金融', '数学', '光影艺术', 'AI', '生活', '哲学'];
 
+const normalizeBasePath = (raw: string): string => {
+  const value = String(raw || '/').trim() || '/';
+  const withLeading = value.startsWith('/') ? value : `/${value}`;
+  return withLeading.endsWith('/') ? withLeading : `${withLeading}/`;
+};
+
+const APP_BASE_PATH = normalizeBasePath(import.meta.env.BASE_URL || '/');
+
+const stripBaseFromPath = (rawPath: string): string => {
+  const withLeading = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+  if (APP_BASE_PATH === '/') return withLeading;
+
+  const baseNoTrailing = APP_BASE_PATH.slice(0, -1);
+  if (withLeading === baseNoTrailing) return '/';
+  if (!withLeading.startsWith(APP_BASE_PATH)) return withLeading;
+
+  const sliced = withLeading.slice(APP_BASE_PATH.length - 1);
+  return sliced || '/';
+};
+
+const withBasePath = (rawPath: string): string => {
+  const withLeading = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+  if (APP_BASE_PATH === '/') return withLeading;
+  const baseNoTrailing = APP_BASE_PATH.slice(0, -1);
+  return withLeading === '/' ? `${baseNoTrailing}/` : `${baseNoTrailing}${withLeading}`;
+};
+
 const safeDecode = (value: string): string => {
   try {
     return decodeURIComponent(value);
@@ -60,7 +87,8 @@ const parseRouteFromLocation = (): RouteState => {
     return { view: 'home', postId: null, category: 'All', blogQuery: '', editId: null };
   }
 
-  const pathnameRaw = safeDecode(window.location.pathname || '/').replace(/\/+$/, '');
+  const rawPath = safeDecode(window.location.pathname || '/');
+  const pathnameRaw = stripBaseFromPath(rawPath).replace(/\/+$/, '');
   const pathname = pathnameRaw || '/';
   const segments = pathname.split('/').filter(Boolean);
   const head = (segments[0] || '').toLowerCase();
@@ -168,6 +196,7 @@ const upsertCanonical = (url: string): void => {
 };
 
 const App: React.FC = () => {
+  const isGithubPages = typeof window !== 'undefined' && window.location.hostname.endsWith('github.io');
   const initialRouteRef = useRef<RouteState>(parseRouteFromLocation());
   const [currentView, setCurrentView] = useState<View>(initialRouteRef.current.view);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(initialRouteRef.current.postId);
@@ -233,12 +262,13 @@ const App: React.FC = () => {
     }
 
     const nextPath = buildPathFromRoute(nextRoute, seoPost);
+    const nextHistoryPath = withBasePath(nextPath);
     const currentPath = `${window.location.pathname}${window.location.search}`;
-    if (nextPath !== currentPath) {
+    if (nextHistoryPath !== currentPath) {
       if (options?.replace) {
-        window.history.replaceState({}, '', nextPath);
+        window.history.replaceState({}, '', nextHistoryPath);
       } else {
-        window.history.pushState({}, '', nextPath);
+        window.history.pushState({}, '', nextHistoryPath);
       }
     }
 
@@ -264,8 +294,9 @@ const App: React.FC = () => {
           resolved,
         );
         const currentPath = `${window.location.pathname}${window.location.search}`;
-        if (targetPath !== currentPath) {
-          window.history.replaceState({}, '', targetPath);
+        const targetHistoryPath = withBasePath(targetPath);
+        if (targetHistoryPath !== currentPath) {
+          window.history.replaceState({}, '', targetHistoryPath);
         }
       }
     },
@@ -337,7 +368,8 @@ const App: React.FC = () => {
     }
 
     const path = buildPathFromRoute(route, postMeta);
-    const absoluteUrl = `${window.location.origin}${path}`;
+    const fullPath = withBasePath(path);
+    const absoluteUrl = `${window.location.origin}${fullPath}`;
     const imageUrl = postMeta?.coverImage
       ? new URL(postMeta.coverImage, window.location.origin).toString()
       : 'https://ocfbitiofnrjdudakqcf.supabase.co/storage/v1/object/public/media/panda.jpg';
@@ -406,7 +438,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen relative selection:bg-cyan-500/30">
-      <ParticleBackground />
+      {!isGithubPages && <ParticleBackground />}
       
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/5 py-4">
