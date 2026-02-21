@@ -4,7 +4,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
-    const rawBasePath = (env.VITE_BASE_PATH || '').trim();
+    const deployTarget = String(env.VITE_DEPLOY_TARGET || '').toLowerCase();
+    const useCustomBasePath = deployTarget === 'github-pages' || deployTarget === 'gh-pages';
+    const rawBasePath = useCustomBasePath ? String(env.VITE_BASE_PATH || '').trim() : '';
     const resolvedBasePath = rawBasePath
       ? `${rawBasePath.startsWith('/') ? rawBasePath : `/${rawBasePath}`}${rawBasePath.endsWith('/') ? '' : '/'}`
       : '/';
