@@ -20,19 +20,13 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://ocfbitiofnrjdudakqcf.supabase.co" crossorigin>
+    <link rel="dns-prefetch" href="//ocfbitiofnrjdudakqcf.supabase.co">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&family=Noto+Sans+SC:wght@300;400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     <link rel="stylesheet" href="./index.css">
 </head>
 <body>
-    <script>
-      (function() {
-        var isGithubPages = window.location.hostname.endsWith('github.io');
-        if (isGithubPages) {
-          document.documentElement.classList.add('gh-lite');
-        }
-      })();
-    </script>
     <div class="mirage-container">
         <div class="mirage-blob w-[900px] h-[900px] bg-cyan-600 top-[-20%] left-[-15%]" style="animation-delay: 0s;"></div>
         <div class="mirage-blob w-[800px] h-[800px] bg-purple-700 bottom-[-15%] right-[-10%]" style="animation-delay: -5s; animation-direction: reverse;"></div>
@@ -46,22 +40,15 @@
 <script type="module" src="./index.tsx"></script>
 <script>
     if ('serviceWorker' in navigator) {
-      const isGithubPages = window.location.hostname.endsWith('github.io');
-      if (isGithubPages) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          registrations.forEach((registration) => registration.unregister());
-        });
-      } else {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('%BASE_URL%sw.js')
-            .then((registration) => {
-              console.log('SW registered:', registration.scope);
-            })
-            .catch((error) => {
-              console.log('SW registration failed:', error);
-            });
-        });
-      }
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('%BASE_URL%sw.js')
+          .then((registration) => {
+            console.log('SW registered:', registration.scope);
+          })
+          .catch((error) => {
+            console.log('SW registration failed:', error);
+          });
+      });
     }
 </script>
 </body>

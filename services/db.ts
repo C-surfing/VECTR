@@ -172,6 +172,9 @@ let friendsCache: { data: Friend[]; timestamp: number } | null = null;
 let commentsCache: Record<string, { data: Comment[]; timestamp: number }> = {};
 const CACHE_DURATION = 60000; // 缂撳瓨1鍒嗛挓
 const COMMENTS_CACHE_DURATION = 20000;
+const POSTS_REMOTE_QUERY_TIMEOUT_MS = 1800;
+
+let postsRefreshPromise: Promise<Post[]> | null = null;
 
 // 杈呭姪鍑芥暟锛氬皢鏁版嵁搴撹褰曡浆鎹负 Post 绫诲瀷
 const transformPost = (row: any): Post => ({
@@ -247,105 +250,214 @@ const mergePostIntoCache = (post: Post): void => {
 };
 
 // 甯﹂噸璇曠殑鏌ヨ鍑芥暟
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return await promise;
+  }
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+};
+
 const queryWithRetry = async <T>(
   queryFn: () => Promise<{ data: T[] | null; error: any }>,
-  maxRetries: number = 3
+  options?: {
+    maxRetries?: number;
+    timeoutMs?: number;
+    retryBaseDelayMs?: number;
+    label?: string;
+  },
 ): Promise<T[]> => {
+  const maxRetries = options?.maxRetries ?? 3;
+  const timeoutMs = options?.timeoutMs ?? 0;
+  const retryBaseDelayMs = options?.retryBaseDelayMs ?? 1000;
+  const label = options?.label || 'query';
   let lastError: any;
-  
+
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const { data, error } = await queryFn();
+      const { data, error } = await withTimeout(queryFn(), timeoutMs, label);
       if (error) {
         lastError = error;
         console.warn(`Query failed (attempt ${i + 1}/${maxRetries}):`, error.message);
-        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+        await sleep(retryBaseDelayMs * (i + 1));
         continue;
       }
       return data || [];
     } catch (err) {
       lastError = err;
       console.warn(`Query error (attempt ${i + 1}/${maxRetries}):`, err);
-      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      await sleep(retryBaseDelayMs * (i + 1));
     }
   }
-  
+
   console.error('Query failed after all retries:', lastError);
   throw (lastError instanceof Error ? lastError : new Error('Remote query failed'));
 };
 
 export const DB = {
-  // 鑾峰彇鎵€鏈夋枃绔狅紙甯︾紦瀛橈級
-  getPosts: async (): Promise<Post[]> => {
-    // Check cache
+  syncPosts: async (): Promise<Post[]> => {
+    if (postsRefreshPromise) {
+      return await postsRefreshPromise;
+    }
+
+    postsRefreshPromise = (async () => {
+      let posts: Post[] = [];
+      const remoteSnapshot = readRemotePostsSnapshot();
+      const localPosts = readLocalPosts();
+      const hasWarmFallback = remoteSnapshot.length > 0 || localPosts.length > 0;
+
+      if (IS_LOCAL_DATA_PROVIDER) {
+        posts = localPosts;
+      } else if (IS_DOMESTIC_DATA_PROVIDER) {
+        try {
+          const payload = await fetchDomesticJson<{ data: Post[] }>('/posts');
+          posts = Array.isArray(payload.data) ? payload.data : [];
+        } catch (error) {
+          console.warn('[posts] domestic read failed, fallback to snapshot/local', error);
+          posts = remoteSnapshot;
+        }
+      } else {
+        try {
+          const data = await queryWithRetry(
+            async () => {
+              return await supabase
+                .from('posts')
+                .select('*')
+                .order('created_at', { ascending: false });
+            },
+            {
+              maxRetries: hasWarmFallback ? 1 : 2,
+              retryBaseDelayMs: hasWarmFallback ? 150 : 300,
+              timeoutMs: hasWarmFallback ? POSTS_REMOTE_QUERY_TIMEOUT_MS : POSTS_REMOTE_QUERY_TIMEOUT_MS + 1200,
+              label: 'posts',
+            },
+          );
+          posts = data.map(transformPost);
+        } catch (error) {
+          console.warn('[posts] remote read failed, fallback to snapshot/local', error);
+          posts = remoteSnapshot;
+        }
+      }
+
+      if (!IS_LOCAL_DATA_PROVIDER) {
+        if (posts.length === 0 && remoteSnapshot.length > 0) {
+          console.warn('[posts] remote returned empty, using last snapshot');
+          posts = remoteSnapshot;
+        }
+
+        if (localPosts.length > 0) {
+          posts = mergePostsById(posts, localPosts);
+        }
+
+        if (posts.length > 0) {
+          writeRemotePostsSnapshot(posts);
+        }
+      }
+
+      postsCache = {
+        data: posts,
+        timestamp: Date.now(),
+      };
+
+      return posts;
+    })();
+
+    try {
+      return await postsRefreshPromise;
+    } finally {
+      postsRefreshPromise = null;
+    }
+  },
+
+  // 获取所有文章（缓存优先 + 快速回退）
+  getPosts: async (options?: { preferFast?: boolean }): Promise<Post[]> => {
+    const preferFast = options?.preferFast !== false;
+
     if (postsCache && Date.now() - postsCache.timestamp < CACHE_DURATION) {
       return postsCache.data;
     }
-    
-    let posts: Post[] = [];
-    const remoteSnapshot = readRemotePostsSnapshot();
 
-    if (IS_LOCAL_DATA_PROVIDER) {
-      posts = readLocalPosts();
-    } else if (IS_DOMESTIC_DATA_PROVIDER) {
-      try {
-        const payload = await fetchDomesticJson<{ data: Post[] }>('/posts');
-        posts = Array.isArray(payload.data) ? payload.data : [];
-      } catch (error) {
-        console.warn('[posts] domestic read failed, fallback to snapshot/local', error);
-        posts = remoteSnapshot;
-      }
-    } else {
-      try {
-        const data = await queryWithRetry(async () => {
-          return await supabase
-            .from('posts')
-            .select('*')
-            .order('created_at', { ascending: false });
+    if (preferFast && postsCache && postsCache.data.length > 0) {
+      if (!postsRefreshPromise) {
+        void DB.syncPosts().catch((error) => {
+          console.warn('[posts] background sync failed:', error);
         });
-        posts = data.map(transformPost);
-      } catch (error) {
-        console.warn('[posts] remote read failed, fallback to snapshot/local', error);
-        posts = remoteSnapshot;
+      }
+      return postsCache.data;
+    }
+
+    if (!IS_LOCAL_DATA_PROVIDER && preferFast) {
+      const fallbackPosts = mergePostsById(readRemotePostsSnapshot(), readLocalPosts());
+      if (fallbackPosts.length > 0) {
+        postsCache = {
+          data: fallbackPosts,
+          timestamp: Date.now(),
+        };
+
+        if (!postsRefreshPromise) {
+          void DB.syncPosts().catch((error) => {
+            console.warn('[posts] background sync failed:', error);
+          });
+        }
+        return fallbackPosts;
       }
     }
 
-    if (!IS_LOCAL_DATA_PROVIDER) {
-      if (posts.length === 0 && remoteSnapshot.length > 0) {
-        console.warn('[posts] remote returned empty, using last snapshot');
-        posts = remoteSnapshot;
-      }
-
-      const localPosts = readLocalPosts();
-      if (localPosts.length > 0) {
-        posts = mergePostsById(posts, localPosts);
-      }
-
-      if (posts.length > 0) {
-        writeRemotePostsSnapshot(posts);
-      }
-    }
-    
-    // 鏇存柊缂撳瓨
-    postsCache = {
-      data: posts,
-      timestamp: Date.now()
-    };
-    
-    return posts;
+    return await DB.syncPosts();
   },
 
-  // 寮哄埗鍒锋柊鏂囩珷缂撳瓨
+  // 强制刷新文章缓存
   refreshPosts: async (): Promise<Post[]> => {
     postsCache = null;
-    return await DB.getPosts();
+    return await DB.syncPosts();
   },
 
-  // 按 ID 获取文章（缓存优先）
   getPostById: async (id: string, forceRefresh: boolean = false): Promise<Post | null> => {
     if (!forceRefresh && postsCache && Date.now() - postsCache.timestamp < CACHE_DURATION) {
       const cached = postsCache.data.find((post) => post.id === id);
       if (cached) return cached;
+    }
+
+    if (!forceRefresh) {
+      if (postsCache) {
+        const staleCached = postsCache.data.find((post) => post.id === id);
+        if (staleCached) {
+          if (!postsRefreshPromise) {
+            void DB.syncPosts().catch((error) => {
+              console.warn('[post] background sync failed:', error);
+            });
+          }
+          return staleCached;
+        }
+      }
+
+      const fallbackPost = mergePostsById(readRemotePostsSnapshot(), readLocalPosts()).find(
+        (post) => post.id === id,
+      );
+      if (fallbackPost) {
+        mergePostIntoCache(fallbackPost);
+        if (!postsRefreshPromise) {
+          void DB.syncPosts().catch((error) => {
+            console.warn('[post] background sync failed:', error);
+          });
+        }
+        return fallbackPost;
+      }
     }
 
     if (IS_DOMESTIC_DATA_PROVIDER) {
@@ -354,11 +466,6 @@ export const DB = {
       if (post) {
         mergePostIntoCache(post);
         return post;
-      }
-
-      if (!forceRefresh) {
-        const posts = await DB.refreshPosts();
-        return posts.find((cachedPost) => cachedPost.id === id) || null;
       }
 
       return null;
@@ -392,11 +499,6 @@ export const DB = {
     if (localPost) {
       mergePostIntoCache(localPost);
       return localPost;
-    }
-
-    if (!forceRefresh) {
-      const posts = await DB.refreshPosts();
-      return posts.find((post) => post.id === id) || null;
     }
 
     return null;
@@ -1086,4 +1188,3 @@ export const DB = {
     }
   }
 };
-

@@ -118,7 +118,7 @@ const PostDetail: React.FC<{
 
   useEffect(() => {
     let isActive = true;
-    DB.getPosts()
+    DB.getPosts({ preferFast: true })
       .then((posts) => {
         if (!isActive) return;
         setAllPosts(posts);

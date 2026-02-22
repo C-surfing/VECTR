@@ -1,6 +1,11 @@
 // Service Worker for VECTR Blog
-const CACHE_NAME = 'vectr-v3';
-const STATIC_ASSETS = ['/', '/index.html'];
+const CACHE_NAME = 'vectr-v4';
+const BASE_PATH = (() => {
+  const scopePath = new URL(self.registration.scope).pathname;
+  return scopePath.endsWith('/') ? scopePath : `${scopePath}/`;
+})();
+const INDEX_PATH = `${BASE_PATH}index.html`;
+const STATIC_ASSETS = [BASE_PATH, INDEX_PATH];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -27,14 +32,15 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
+  const isSameOrigin = url.origin === self.location.origin;
   const isSupabase = url.hostname.includes('supabase');
-  const isApi = url.pathname.startsWith('/api');
+  const isApi = isSameOrigin && (url.pathname.startsWith('/api') || url.pathname.startsWith(`${BASE_PATH}api`));
 
-  // Ensure newest app shell: navigation requests use network first.
+  // Always keep navigation up to date; fallback to cached app shell.
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request).catch(async () => {
-        const cachedIndex = await caches.match('/index.html');
+        const cachedIndex = await caches.match(INDEX_PATH);
         if (cachedIndex) return cachedIndex;
         return new Response('Offline', { status: 503, statusText: 'Offline' });
       })
@@ -42,12 +48,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Skip unrelated cross-origin requests.
-  if (url.origin !== location.origin && !isSupabase) {
+  if (!isSameOrigin && !isSupabase) {
     return;
   }
 
-  // Network first for API / Supabase with safe fallback response.
+  // Network-first for dynamic data.
   if (isApi || isSupabase) {
     event.respondWith(
       fetch(request)
@@ -67,7 +72,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache first for static assets; update in background.
+  // Cache-first for static assets, refresh in background.
   event.respondWith(
     caches.match(request).then((cached) => {
       const networkPromise = fetch(request).then((response) => {
@@ -84,7 +89,7 @@ self.addEventListener('fetch', (event) => {
       }
 
       return networkPromise.catch(async () => {
-        const cachedIndex = await caches.match('/index.html');
+        const cachedIndex = await caches.match(INDEX_PATH);
         if (cachedIndex) return cachedIndex;
         return new Response('Offline', { status: 503, statusText: 'Offline' });
       });

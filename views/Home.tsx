@@ -35,10 +35,19 @@ const Home: React.FC<{ onNavigate: (view: any, id?: string, cat?: Category | 'Al
 
     const loadPosts = async () => {
       try {
-        const allPosts = await DB.getPosts();
+        const allPosts = await DB.getPosts({ preferFast: true });
         if (!isActive) return;
         setPosts(allPosts);
         setLoading(false);
+
+        void DB.syncPosts()
+          .then((freshPosts) => {
+            if (!isActive) return;
+            setPosts(freshPosts);
+          })
+          .catch((error) => {
+            console.warn('[home] background posts sync failed:', error);
+          });
 
         // Load comment counts in background to keep first paint fast.
         const candidates = allPosts.slice(0, 10);

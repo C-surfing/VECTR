@@ -26,23 +26,38 @@ const BlogList: React.FC<BlogListProps> = ({
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    let isActive = true;
     const loadPosts = async () => {
       setLoading(true);
       setError(null);
       try {
-        const data = await DB.getPosts();
+        const data = await DB.getPosts({ preferFast: true });
+        if (!isActive) return;
         setPosts(data);
+        void DB.syncPosts()
+          .then((freshPosts) => {
+            if (!isActive) return;
+            setPosts(freshPosts);
+          })
+          .catch((syncError) => {
+            console.warn('[blog] background posts sync failed:', syncError);
+          });
         if (data.length === 0) {
           setError('暂无文章，请先发布内容');
         }
       } catch (err) {
+        if (!isActive) return;
         console.error('Error loading posts:', err);
         setError('加载文章失败，请检查网络连接');
       } finally {
+        if (!isActive) return;
         setLoading(false);
       }
     };
     loadPosts();
+    return () => {
+      isActive = false;
+    };
   }, [retryCount]);
 
   const handleRetry = () => {

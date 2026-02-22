@@ -196,7 +196,6 @@ const upsertCanonical = (url: string): void => {
 };
 
 const App: React.FC = () => {
-  const isGithubPages = typeof window !== 'undefined' && window.location.hostname.endsWith('github.io');
   const initialRouteRef = useRef<RouteState>(parseRouteFromLocation());
   const [currentView, setCurrentView] = useState<View>(initialRouteRef.current.view);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(initialRouteRef.current.postId);
@@ -438,7 +437,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen relative selection:bg-cyan-500/30">
-      {!isGithubPages && <ParticleBackground />}
+      <ParticleBackground />
       
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/5 py-4">
